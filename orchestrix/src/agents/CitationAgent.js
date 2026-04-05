@@ -93,6 +93,76 @@ function generateAll(paper) {
   }
 }
 
+function exportSessionReport(session) {
+  const papers = session.papers || []
+  const citations = session.citations || {}
+  const summaries = session.summaries || {}
+  const analyses = session.analyses || {}
+
+  let report = ''
+  report += '═'.repeat(60) + '\n'
+  report += `ORCHESTRIX RESEARCH REPORT\n`
+  report += `Session: ${session.name || session.query}\n`
+  report += `Query: ${session.query}\n`
+  report += `Date: ${new Date(session.timestamp).toLocaleString()}\n`
+  report += `Total Papers: ${papers.length}\n`
+  report += '═'.repeat(60) + '\n\n'
+
+  // Analysis summary
+  if (analyses.averageCitations) {
+    report += '── ANALYSIS SUMMARY ──\n'
+    report += `Average Citations: ${analyses.averageCitations}\n`
+    report += `Year Range: ${analyses.yearRange?.min}–${analyses.yearRange?.max}\n`
+    report += `Top Keyword: ${analyses.keywordFrequency?.[0]?.word || '—'}\n`
+    report += `Top Author: ${analyses.topAuthors?.[0]?.name || '—'}\n`
+    if (analyses.emergingTopics?.length) {
+      report += `Emerging Topics: ${analyses.emergingTopics.map(t => t.word).join(', ')}\n`
+    }
+    report += '\n'
+  }
+
+  // Papers
+  report += '── PAPERS ──\n\n'
+  papers.forEach((paper, i) => {
+    const cite = citations[paper.id]
+    const summary = summaries[paper.id]
+
+    report += `[${i + 1}] ${paper.title}\n`
+    report += `    Authors: ${paper.authors?.map(a => a.name).join(', ') || 'Unknown'}\n`
+    report += `    Year: ${paper.year || 'n.d.'} | Citations: ${paper.citationCount || 0} | Source: ${paper.source}\n`
+    report += `    URL: ${paper.url || '—'}\n`
+    report += `    Relevance Score: ${paper.relevanceScore?.toFixed(3) || '—'}\n`
+
+    if (paper.abstract) {
+      report += `    Abstract: ${paper.abstract.slice(0, 200)}...\n`
+    }
+
+    if (summary) {
+      report += `\n    SUMMARY:\n`
+      summary.split('\n').forEach(line => {
+        report += `    ${line}\n`
+      })
+    }
+
+    if (cite) {
+      report += `\n    CITATIONS:\n`
+      report += `    APA:  ${cite.APA}\n`
+      report += `    MLA:  ${cite.MLA}\n`
+      report += `    IEEE: ${cite.IEEE}\n`
+    }
+
+    report += '\n' + '─'.repeat(60) + '\n\n'
+  })
+
+  const blob = new Blob([report], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `orchestrix-report-${Date.now()}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ─── Bulk Export ──────────────────────────────────────────────────────────────
 function exportTxt(papers, citations) {
   let content = 'ORCHESTRIX — CITATION EXPORT\n'
@@ -135,5 +205,9 @@ function exportBib(papers, citations) {
   URL.revokeObjectURL(url)
 }
 
-const CitationAgent = { generateAll, generateAPA, generateMLA, generateIEEE, generateBibtex, exportTxt, exportBib }
+const CitationAgent = {
+  generateAll, generateAPA, generateMLA,
+  generateIEEE, generateBibtex,
+  exportTxt, exportBib, exportSessionReport
+}
 export default CitationAgent

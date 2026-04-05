@@ -3,6 +3,9 @@ import { runOrchestrator, continueEntityRun } from '../orchestrator/Orchestrator
 import PaperCard from '../components/PaperCard'
 import TracePanel from '../components/TracePanel'
 import EntityConfirm from '../components/EntityConfirm'
+import FilterBar from '../components/FilterBar'
+import CitationAgent from '../agents/CitationAgent'
+import { getSessionById } from '../store/sessionStore'
 
 const SUGGESTIONS = [
   'AI in healthcare trends',
@@ -17,10 +20,11 @@ export default function ResearchPage() {
   const [query, setQuery] = useState('')
   const [sessionName, setSessionName] = useState('')
   const [loading, setLoading] = useState(false)
-  const [stage, setStage] = useState('idle') // idle | loading | confirm | results | error
+  const [stage, setStage] = useState('idle')
   const [trace, setTrace] = useState([])
   const [traceOpen, setTraceOpen] = useState(false)
   const [papers, setPapers] = useState([])
+  const [filteredPapers, setFilteredPapers] = useState([])
   const [citations, setCitations] = useState({})
   const [intent, setIntent] = useState(null)
   const [sessionId, setSessionId] = useState(null)
@@ -36,6 +40,7 @@ export default function ResearchPage() {
     setTrace([])
     setTraceOpen(true)
     setPapers([])
+    setFilteredPapers([])
     setCitations({})
     setSelectedPapers([])
     setIntent(null)
@@ -100,17 +105,23 @@ export default function ResearchPage() {
     )
   }
 
+  const handleExportReport = () => {
+    const session = getSessionById(sessionId)
+    if (session) CitationAgent.exportSessionReport(session)
+  }
+
   const loadMore = async () => {
     const nextPage = page + 1
     setPage(nextPage)
     const { default: DiscoveryAgent } = await import('../agents/DiscoveryAgent')
-    const { default: CitationAgent } = await import('../agents/CitationAgent')
     const more = await DiscoveryAgent.run(query, nextPage)
     const newCitations = {}
     more.forEach(p => { newCitations[p.id] = CitationAgent.generateAll(p) })
     setPapers(prev => [...prev, ...more])
     setCitations(prev => ({ ...prev, ...newCitations }))
   }
+
+  const displayPapers = filteredPapers.length > 0 ? filteredPapers : papers
 
   return (
     <div style={{
@@ -129,33 +140,35 @@ export default function ResearchPage() {
         loading={loading}
         stage={stage}
         inputRef={inputRef}
-      /> 
+      />
+
       {/* ── LOADING ── */}
-{stage === 'loading' && (
-  <div style={{
-    maxWidth: 600, margin: '40px auto',
-    textAlign: 'center', padding: '0 24px'
-  }}>
-    <div style={{
-      background: '#0d0d1a', border: '1px solid #1e1e35',
-      borderRadius: 16, padding: '32px 24px'
-    }}>
-      <div style={{
-        width: 40, height: 40, borderRadius: '50%',
-        border: '3px solid #1e1e35', borderTopColor: '#6366f1',
-        animation: 'spin 0.8s linear infinite',
-        margin: '0 auto 16px'
-      }} />
-      <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: 8 }}>
-        Orchestrating your research pipeline...
-      </div>
-      <div style={{ color: '#475569', fontSize: 13 }}>
-        Fetching from Semantic Scholar + arXiv. This may take 10–20 seconds.
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  </div>
-)}
+      {stage === 'loading' && (
+        <div style={{
+          maxWidth: 600, margin: '40px auto',
+          textAlign: 'center', padding: '0 24px'
+        }}>
+          <div style={{
+            background: '#0d0d1a', border: '1px solid #1e1e35',
+            borderRadius: 16, padding: '32px 24px'
+          }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%',
+              border: '3px solid #1e1e35', borderTopColor: '#6366f1',
+              animation: 'spin 0.8s linear infinite',
+              margin: '0 auto 16px'
+            }} />
+            <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: 8 }}>
+              Orchestrating your research pipeline...
+            </div>
+            <div style={{ color: '#475569', fontSize: 13 }}>
+              Fetching from Semantic Scholar + arXiv. This may take 10–20 seconds.
+            </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </div>
+      )}
+
       {/* ── ENTITY CONFIRM ── */}
       {stage === 'confirm' && intent && (
         <EntityConfirm
@@ -172,32 +185,52 @@ export default function ResearchPage() {
           {/* Results header */}
           <div style={{
             display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 24, paddingBottom: 16,
+            justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+            marginBottom: 20, paddingBottom: 16,
             borderBottom: '1px solid #1e1e35'
           }}>
             <div>
               <span style={{ fontSize: 13, color: '#475569' }}>
-                {papers.length} papers found for{' '}
+                {displayPapers.length} papers
+                {filteredPapers.length > 0 ? ' (filtered)' : ' found'} for{' '}
               </span>
               <span style={{ fontSize: 13, color: '#a5b4fc', fontWeight: 600 }}>
                 "{query}"
               </span>
             </div>
-            {selectedPapers.length > 0 && (
-              <div style={{
-                fontSize: 12, color: '#10b981', fontWeight: 600,
-                background: '#10b98110', border: '1px solid #10b98130',
-                padding: '4px 12px', borderRadius: 20
-              }}>
-                {selectedPapers.length} selected for synthesis
-              </div>
-            )}
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {selectedPapers.length > 0 && (
+                <div style={{
+                  fontSize: 12, color: '#10b981', fontWeight: 600,
+                  background: '#10b98110', border: '1px solid #10b98130',
+                  padding: '4px 12px', borderRadius: 20
+                }}>
+                  {selectedPapers.length} selected
+                </div>
+              )}
+              <button
+                onClick={handleExportReport}
+                style={{
+                  padding: '6px 16px', borderRadius: 8, fontSize: 12,
+                  fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                  background: '#10b98115', border: '1px solid #10b98130',
+                  color: '#10b981'
+                }}>
+                ↓ Export Report
+              </button>
+            </div>
           </div>
+
+          {/* Filter bar */}
+          <FilterBar
+            papers={papers}
+            onFilter={setFilteredPapers}
+          />
 
           {/* Paper cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {papers.map((paper, i) => (
+            {displayPapers.map((paper, i) => (
               <PaperCard
                 key={paper.id}
                 paper={paper}
@@ -210,24 +243,26 @@ export default function ResearchPage() {
           </div>
 
           {/* Load more */}
-          <div style={{ textAlign: 'center', marginTop: 40 }}>
-            <button onClick={loadMore} style={{
-              padding: '12px 32px', borderRadius: 10, fontSize: 14,
-              fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-              background: 'transparent', border: '1px solid #1e1e35',
-              color: '#64748b',
-            }}
-              onMouseEnter={e => {
-                e.target.style.borderColor = '#6366f160'
-                e.target.style.color = '#a5b4fc'
+          {filteredPapers.length === 0 && (
+            <div style={{ textAlign: 'center', marginTop: 40 }}>
+              <button onClick={loadMore} style={{
+                padding: '12px 32px', borderRadius: 10, fontSize: 14,
+                fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                background: 'transparent', border: '1px solid #1e1e35',
+                color: '#64748b',
               }}
-              onMouseLeave={e => {
-                e.target.style.borderColor = '#1e1e35'
-                e.target.style.color = '#64748b'
-              }}>
-              Load more papers →
-            </button>
-          </div>
+                onMouseEnter={e => {
+                  e.target.style.borderColor = '#6366f160'
+                  e.target.style.color = '#a5b4fc'
+                }}
+                onMouseLeave={e => {
+                  e.target.style.borderColor = '#1e1e35'
+                  e.target.style.color = '#64748b'
+                }}>
+                Load more papers →
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -268,7 +303,7 @@ export default function ResearchPage() {
   )
 }
 
-// ── Hero + Search (self-contained) ────────────────────────────────────────────
+// ── Hero + Search ─────────────────────────────────────────────────────────────
 function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, loading, stage, inputRef }) {
   const [focused, setFocused] = useState(false)
   const collapsed = stage !== 'idle'
@@ -279,7 +314,6 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
       transition: 'padding 0.5s cubic-bezier(0.4,0,0.2,1)',
       position: 'relative', overflow: 'hidden'
     }}>
-      {/* Background glow */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 0,
         background: 'radial-gradient(ellipse 70% 50% at 50% 0%, #6366f108 0%, transparent 70%)',
@@ -290,7 +324,6 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
         position: 'relative', zIndex: 1,
         maxWidth: 720, margin: '0 auto', textAlign: 'center'
       }}>
-        {/* Title — collapses when searching */}
         {!collapsed && (
           <>
             <div style={{
@@ -342,7 +375,6 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
           transition: 'all 0.3s',
           overflow: 'hidden'
         }}>
-          {/* Main input row */}
           <div style={{
             display: 'flex', alignItems: 'center',
             gap: 12, padding: '14px 20px'
@@ -371,7 +403,8 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
               disabled={!query.trim() || loading}
               style={{
                 padding: '9px 22px', borderRadius: 9, fontSize: 13,
-                fontWeight: 700, cursor: !query.trim() || loading ? 'not-allowed' : 'pointer',
+                fontWeight: 700,
+                cursor: !query.trim() || loading ? 'not-allowed' : 'pointer',
                 background: !query.trim() || loading
                   ? '#1e1e35'
                   : 'linear-gradient(135deg, #6366f1, #4f46e5)',
@@ -385,13 +418,15 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
             </button>
           </div>
 
-          {/* Session name row */}
           <div style={{
             borderTop: '1px solid #1e1e35',
             padding: '9px 20px',
             display: 'flex', alignItems: 'center', gap: 10
           }}>
-            <span style={{ fontSize: 11, color: '#2a2a4a', fontWeight: 600, letterSpacing: '0.05em' }}>
+            <span style={{
+              fontSize: 11, color: '#2a2a4a',
+              fontWeight: 600, letterSpacing: '0.05em'
+            }}>
               SESSION
             </span>
             <input
@@ -438,7 +473,7 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
       </div>
     </div>
   )
-} 
+}
 
 function LoadingSpinner() {
   return (

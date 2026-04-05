@@ -34,21 +34,80 @@ async function callGroq(prompt) {
   }
 }
 
-async function summarizePaper(paper) {
-  const prompt = `You are a research assistant. Summarize this paper clearly and concisely.
+async function summarizePaper(paper, length = 'medium') {
+  const lengthConfig = {
+    short: {
+      instruction: 'Write a concise 2-3 sentence summary.',
+      maxTokens: 150
+    },
+    medium: {
+      instruction: 'Write a structured summary with 4 sections.',
+      maxTokens: 400
+    },
+    detailed: {
+      instruction: 'Write a comprehensive detailed analysis covering all aspects.',
+      maxTokens: 800
+    }
+  }
+
+  const config = lengthConfig[length] || lengthConfig.medium
+
+  const formatMap = {
+    short: `Give a 2-3 sentence plain summary covering what it's about and why it matters.`,
+    medium: `Respond in exactly this format:
+**What it's about:** (1-2 sentences)
+**Key contribution:** (1-2 sentences)
+**Method used:** (1 sentence)
+**Why it matters:** (1-2 sentences)`,
+    detailed: `Respond in exactly this format:
+**Overview:** (3-4 sentences about the paper's topic and context)
+**Problem Statement:** (2-3 sentences about what problem it solves)
+**Methodology:** (3-4 sentences about the approach and techniques used)
+**Key Findings:** (3-4 sentences about results and contributions)
+**Limitations:** (1-2 sentences about what's missing or could be improved)
+**Impact & Relevance:** (2-3 sentences about why this matters to the field)
+**Who should read this:** (1 sentence)`
+  }
+
+  const prompt = `You are a research assistant. Summarize this academic paper.
 
 Title: ${paper.title}
 Authors: ${paper.authors?.map(a => a.name).join(', ') || 'Unknown'}
 Year: ${paper.year || 'Unknown'}
 Abstract: ${paper.abstract}
 
-Respond in exactly this format:
-**What it's about:** (1-2 sentences)
-**Key contribution:** (1-2 sentences)
-**Method used:** (1 sentence)
-**Why it matters:** (1-2 sentences)`
+${config.instruction}
 
-  return await callGroq(prompt)
+${formatMap[length]}`
+
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY
+  if (!apiKey) return 'Error: VITE_GROQ_API_KEY not found in .env file.'
+
+  try {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.5,
+        max_tokens: config.maxTokens
+      })
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      return `Groq error: ${err?.error?.message || res.status}`
+    }
+
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content?.trim() || 'No response from Groq.'
+  } catch (e) {
+    return `Network error: ${e.message}`
+  }
 }
 
 async function synthesizePapers(papers) {

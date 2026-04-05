@@ -17,6 +17,44 @@ function scoreRelevance(paper, keywords, recencyBias = false) {
     : (keywordScore * 0.4) + (recencyScore * 0.25) + (citationScore * 0.35)
 }
 
+// Detect if query looks like a paper title
+function looksLikeTitle(query) {
+  const words = query.trim().split(/\s+/)
+  // More than 4 words + no question words = likely a title
+  const questionWords = ['what', 'how', 'why', 'when', 'who', 'which', 'recent', 'top', 'best', 'latest']
+  const hasQuestionWord = words.some(w => questionWords.includes(w.toLowerCase()))
+  return words.length >= 4 && !hasQuestionWord
+}
+
+async function fetchExactTitle(query) {
+  // Semantic Scholar has a direct title search
+  const url = isProd
+    ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=title,authors,year,abstract,citationCount,url&offset=0&limit=3`
+    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent('"' + query + '"')}&fields=title,authors,year,abstract,citationCount,url&offset=0&limit=3`
+
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return []
+    const data = await res.json()
+
+    return (data.data || []).map(p => {
+      const paper = createPaper()
+      paper.id = p.paperId || crypto.randomUUID()
+      paper.title = p.title || 'Untitled'
+      paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
+      paper.year = p.year || null
+      paper.abstract = p.abstract || 'No abstract available.'
+      paper.url = p.url || `https://www.semanticscholar.org/paper/${p.paperId}`
+      paper.citationCount = p.citationCount || 0
+      paper.source = 'semanticscholar'
+      paper.isExactMatch = true // ← flag for UI badge
+      return paper
+    })
+  } catch (e) {
+    return []
+  }
+}
+
 async function fetchSemanticScholar(query, offset = 0, limit = 10) {
   const url = isProd
     ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=title,authors,year,abstract,citationCount,url&offset=${offset}&limit=${limit}`
@@ -109,21 +147,42 @@ async function run(query, page = 1, recencyBias = false) {
 
   console.log('DiscoveryAgent:', query)
 
+  // Check if query looks like a paper title
+  const isTitle = looksLikeTitle(query)
+  let exactMatches = []
+
+  if (isTitle) {
+    console.log('Detected as paper title — fetching exact match first')
+    exactMatches = await fetchExactTitle(query)
+    await sleep(300)
+  }
+
   const ssPapers = await fetchSemanticScholar(query, offset, limit)
   await sleep(500)
   const arxivPapers = await fetchArxiv(query, offset, limit)
 
-  console.log(`SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
+  console.log(`Exact: ${exactMatches.length}, SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
 
-  const merged = deduplicate([...ssPapers, ...arxivPapers])
-  const scored = merged.map(paper => ({
+  // Merge — exact matches first, then rest deduped
+  const exactIds = new Set(exactMatches.map(p => p.id))
+  const rest = deduplicate([...ssPapers, ...arxivPapers])
+    .filter(p => !exactIds.has(p.id))
+
+  const scored = rest.map(paper => ({
     ...paper,
     relevanceScore: scoreRelevance(paper, keywords, recencyBias)
   }))
   scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
 
-  console.log(`Total: ${scored.length}`)
-  return scored
+  // Exact matches get score 1.0 and pinned at top
+  const scoredExact = exactMatches.map(p => ({
+    ...p,
+    relevanceScore: 1.0
+  }))
+
+  const final = [...scoredExact, ...scored]
+  console.log(`Total: ${final.length}`)
+  return final
 }
 
 const DiscoveryAgent = { run }

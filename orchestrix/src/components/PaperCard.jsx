@@ -12,6 +12,7 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
   const [activeTab, setActiveTab] = useState('abstract')
   const [summary, setSummary] = useState(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryLength, setSummaryLength] = useState('medium')
   const [showCite, setShowCite] = useState(false)
   const [citeStyle, setCiteStyle] = useState('APA')
   const [copied, setCopied] = useState(false)
@@ -19,13 +20,12 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
   const src = SOURCE_CONFIG[paper.source] || SOURCE_CONFIG.arxiv
   const cite = citations?.[paper.id]
 
-  const handleSummarize = async () => {
-    if (summary) { setActiveTab('summary'); return }
-    setSummaryLoading(true)
-    setActiveTab('summary')
-    const result = await SummarizationAgent.summarizePaper(paper)
-    setSummary(result)
-    setSummaryLoading(false)
+  const handleSummarize = async (length = summaryLength) => {
+  setSummaryLoading(true)
+  setActiveTab('summary')
+  const result = await SummarizationAgent.summarizePaper(paper, length)
+  setSummary(result)
+  setSummaryLoading(false)
   }
 
   const handleCopy = () => {
@@ -234,31 +234,57 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
 
             {/* Summary tab */}
             {activeTab === 'summary' && (
-              <div>
-                {summaryLoading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {[100, 80, 90, 70].map((w, i) => (
-                      <div key={i} style={{
-                        height: 14, borderRadius: 6,
-                        background: '#1e1e35', width: `${w}%`,
-                        animation: 'pulse 1.5s ease infinite',
-                        animationDelay: `${i * 0.1}s`
-                      }} />
-                    ))}
-                    <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
-                      Groq is summarizing...
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{
-                    fontSize: 13, color: '#94a3b8', lineHeight: 1.9,
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {summary}
-                  </div>
-                )}
-              </div>
-            )}
+  <div>
+    {/* Length selector */}
+    <div style={{
+      display: 'flex', gap: 8, marginBottom: 16,
+      alignItems: 'center'
+    }}>
+      <span style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>
+        LENGTH:
+      </span>
+      {['short', 'medium', 'detailed'].map(len => (
+        <button key={len} onClick={() => {
+          setSummaryLength(len)
+          setSummary(null)
+          handleSummarize(len)
+        }} style={{
+          padding: '5px 14px', borderRadius: 20, fontSize: 11,
+          fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+          background: summaryLength === len ? '#6366f115' : 'transparent',
+          border: `1px solid ${summaryLength === len ? '#6366f140' : '#1e1e35'}`,
+          color: summaryLength === len ? '#a5b4fc' : '#475569',
+          textTransform: 'capitalize'
+        }}>
+          {len === 'short' ? '⚡ Short' : len === 'medium' ? '📄 Medium' : '📚 Detailed'}
+        </button>
+      ))}
+    </div>
+
+    {summaryLoading ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {[100, 80, 90, 70, 85].map((w, i) => (
+          <div key={i} style={{
+            height: 14, borderRadius: 6,
+            background: '#1e1e35', width: `${w}%`,
+            animation: 'pulse 1.5s ease infinite',
+            animationDelay: `${i * 0.1}s`
+          }} />
+        ))}
+        <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
+          Generating {summaryLength} summary...
+        </div>
+      </div>
+    ) : (
+      <div style={{
+        fontSize: 13, color: '#94a3b8',
+        lineHeight: 1.9, whiteSpace: 'pre-wrap'
+      }}>
+        {summary}
+      </div>
+    )}
+  </div>
+)}
 
             {/* Citation tab */}
             {activeTab === 'cite' && cite && (
