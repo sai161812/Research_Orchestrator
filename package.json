@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "axios": "^1.14.0",
+    "react-router-dom": "^7.14.0",
+    "recharts": "^3.8.1",
+    "tailwindcss": "^4.2.2"
+  }
+}
