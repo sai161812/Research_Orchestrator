@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 export default function FilterBar({ papers, onFilter }) {
   const [yearFrom, setYearFrom] = useState('')
@@ -9,31 +9,46 @@ export default function FilterBar({ papers, onFilter }) {
   const [open, setOpen] = useState(false)
 
   const currentYear = new Date().getFullYear()
+  const numericYearFrom = yearFrom ? parseInt(yearFrom, 10) : null
+  const numericYearTo = yearTo ? parseInt(yearTo, 10) : null
+  const numericMinCitations = minCitations ? parseInt(minCitations, 10) : null
 
-  const applyFilters = () => {
+  const hasActiveFilters = Boolean(
+    yearFrom || yearTo || minCitations || source !== 'all' || sortBy !== 'relevance'
+  )
+
+  const sortedAndFiltered = useMemo(() => {
     let filtered = [...papers]
 
-    // Year range filter
-    if (yearFrom) filtered = filtered.filter(p => p.year >= parseInt(yearFrom))
-    if (yearTo) filtered = filtered.filter(p => p.year <= parseInt(yearTo))
+    const yearMin = numericYearFrom ?? null
+    const yearMax = numericYearTo ?? null
+    const from = yearMin !== null && yearMax !== null ? Math.min(yearMin, yearMax) : yearMin
+    const to = yearMin !== null && yearMax !== null ? Math.max(yearMin, yearMax) : yearMax
 
-    // Min citations filter
-    if (minCitations) filtered = filtered.filter(p => p.citationCount >= parseInt(minCitations))
-
-    // Source filter
+    if (from !== null) filtered = filtered.filter(p => (p.year || 0) >= from)
+    if (to !== null) filtered = filtered.filter(p => (p.year || 0) <= to)
+    if (numericMinCitations !== null) {
+      filtered = filtered.filter(p => (p.citationCount || 0) >= numericMinCitations)
+    }
     if (source !== 'all') filtered = filtered.filter(p => p.source === source)
 
-    // Sort
     if (sortBy === 'relevance') {
-      filtered.sort((a, b) => b.relevanceScore - a.relevanceScore)
+      filtered.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
     } else if (sortBy === 'citations') {
-      filtered.sort((a, b) => b.citationCount - a.citationCount)
+      filtered.sort((a, b) => (b.citationCount || 0) - (a.citationCount || 0))
     } else if (sortBy === 'year') {
       filtered.sort((a, b) => (b.year || 0) - (a.year || 0))
     }
+    return filtered
+  }, [papers, numericMinCitations, numericYearFrom, numericYearTo, sortBy, source])
 
-    onFilter(filtered)
+  const applyFilters = () => {
+    onFilter({ papers: sortedAndFiltered, active: hasActiveFilters })
   }
+
+  useEffect(() => {
+    onFilter({ papers: sortedAndFiltered, active: hasActiveFilters })
+  }, [sortedAndFiltered, hasActiveFilters, onFilter])
 
   const reset = () => {
     setYearFrom('')
@@ -41,10 +56,8 @@ export default function FilterBar({ papers, onFilter }) {
     setMinCitations('')
     setSortBy('relevance')
     setSource('all')
-    onFilter(papers)
+    onFilter({ papers, active: false })
   }
-
-  const hasActiveFilters = yearFrom || yearTo || minCitations || source !== 'all' || sortBy !== 'relevance'
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -76,7 +89,6 @@ export default function FilterBar({ papers, onFilter }) {
           {['relevance', 'citations', 'year'].map(s => (
             <button key={s} onClick={() => {
               setSortBy(s)
-              setTimeout(applyFilters, 0)
             }} style={{
               padding: '5px 12px', borderRadius: 20, fontSize: 11,
               fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',

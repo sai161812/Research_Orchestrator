@@ -25,12 +25,14 @@ export default function ResearchPage() {
   const [traceOpen, setTraceOpen] = useState(false)
   const [papers, setPapers] = useState([])
   const [filteredPapers, setFilteredPapers] = useState([])
+  const [isFilterActive, setIsFilterActive] = useState(false)
   const [citations, setCitations] = useState({})
   const [intent, setIntent] = useState(null)
   const [sessionId, setSessionId] = useState(null)
   const [selectedPapers, setSelectedPapers] = useState([])
   const [pendingSessionId, setPendingSessionId] = useState(null)
   const [page, setPage] = useState(1)
+  const [fallbackExhausted, setFallbackExhausted] = useState(false)
   const inputRef = useRef(null)
 
   const handleSearch = async (q = query) => {
@@ -41,12 +43,14 @@ export default function ResearchPage() {
     setTraceOpen(true)
     setPapers([])
     setFilteredPapers([])
+    setIsFilterActive(false)
     setCitations({})
     setSelectedPapers([])
     setIntent(null)
     setSessionId(null)
     setPendingSessionId(null)
     setPage(1)
+    setFallbackExhausted(false)
 
     const result = await runOrchestrator(
       q.trim(),
@@ -69,6 +73,7 @@ export default function ResearchPage() {
       setCitations(result.citations)
       setSessionId(result.sessionId)
       setIntent(result.intent)
+      setFallbackExhausted(false)
       setStage('results')
     } else {
       setStage('error')
@@ -90,6 +95,7 @@ export default function ResearchPage() {
     if (result.status === 'done') {
       setPapers(result.papers)
       setCitations(result.citations)
+      setFallbackExhausted(Boolean(result.fallbackExhausted))
       setStage('results')
     } else {
       setStage('error')
@@ -121,7 +127,7 @@ export default function ResearchPage() {
     setCitations(prev => ({ ...prev, ...newCitations }))
   }
 
-  const displayPapers = filteredPapers.length > 0 ? filteredPapers : papers
+  const displayPapers = isFilterActive ? filteredPapers : papers
 
   return (
     <div style={{
@@ -225,7 +231,10 @@ export default function ResearchPage() {
           {/* Filter bar */}
           <FilterBar
             papers={papers}
-            onFilter={setFilteredPapers}
+            onFilter={({ papers: next, active }) => {
+              setFilteredPapers(next)
+              setIsFilterActive(Boolean(active))
+            }}
           />
 
           {/* Paper cards */}
@@ -268,7 +277,7 @@ export default function ResearchPage() {
       )}
 
       {/* ── NO RESULTS ── */}
-      {stage === 'results' && papers.length === 0 && (
+      {stage === 'results' && papers.length === 0 && fallbackExhausted && (
         <div style={{
           maxWidth: 560, margin: '40px auto', textAlign: 'center',
           padding: 32, background: '#0d0d1a',

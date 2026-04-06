@@ -111,6 +111,63 @@ Examples:
   }
 }
 
+// ─── Fallback entity suggestion when discovery is weak/empty ──────────────────
+async function suggestFallbackEntities(query) {
+  const prompt = `
+You are helping recover a failed academic paper search.
+
+User query: "${query}"
+
+Return strict JSON with:
+1) entityType: "person" | "organization" | "concept"
+2) subTopics: 3-5 short research-oriented topics that are likely to produce papers
+3) reasoning: one sentence
+
+Rules:
+- Prefer concrete academic sub-topics (not generic words like "AI", "technology").
+- Keep topics concise and searchable.
+- Return JSON only.
+
+{
+  "entityType": "concept",
+  "subTopics": ["topic 1", "topic 2", "topic 3"],
+  "reasoning": "..."
+}
+`
+
+  try {
+    const text = await callGroq(prompt, 300)
+    const clean = text.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(clean)
+    const subTopics = Array.isArray(parsed.subTopics)
+      ? parsed.subTopics.map(s => String(s).trim()).filter(Boolean).slice(0, 5)
+      : []
+
+    if (subTopics.length === 0) throw new Error('No fallback sub-topics generated')
+
+    return {
+      entityType: parsed.entityType || 'concept',
+      subTopics,
+      reasoning: parsed.reasoning || 'Suggested fallback research entities.'
+    }
+  } catch {
+    // Deterministic fallback so orchestration still works without LLM output.
+    const words = (query.toLowerCase().match(/\b[a-z]{4,}\b/g) || [])
+      .filter(w => !['research', 'paper', 'papers', 'latest', 'recent', 'about'].includes(w))
+    const seed = words.slice(0, 2).join(' ') || query.trim()
+    return {
+      entityType: 'concept',
+      subTopics: [
+        `${seed} methods`,
+        `${seed} applications`,
+        `${seed} benchmark`,
+        `${seed} survey`
+      ],
+      reasoning: 'Fallback entity suggestions generated from query keywords.'
+    }
+  }
+}
+
 // ─── Improved Relevance Scoring ───────────────────────────────────────────────
 function scoreRelevance(paper, cleanKeywords, recencyBias) {
   const text = `${paper.title} ${paper.abstract}`.toLowerCase()
@@ -214,10 +271,41 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
 
     // Exact matches stay at top with their score=1.0, keyword results follow
     const papers = [...exactMatches, ...scoredRest]
+    const weakResults = papers.length === 0 || (papers.length < 3 && (papers[0]?.relevanceScore || 0) < 0.2)
 
     log('discovery', 'done',
       `Found ${papers.length} papers (${exactMatches.length} exact match${exactMatches.length !== 1 ? 'es' : ''}).`,
       Date.now() - discStart)
+
+    // If discovery is weak/empty for non-entity flows, switch to entity confirmation.
+    if (weakResults) {
+      const fallback = await suggestFallbackEntities(query)
+      const fallbackIntent = {
+        ...intent,
+        type: 'entity',
+        isEntity: true,
+        entityType: fallback.entityType,
+        subTopics: fallback.subTopics,
+        reasoning: `${intent.reasoning} | Fallback triggered: ${fallback.reasoning}`
+      }
+
+      session.mode = 'entity'
+      session.entityMeta = { type: fallbackIntent.entityType, subTopics: fallbackIntent.subTopics }
+      updateSession(session.id, { mode: session.mode, entityMeta: session.entityMeta })
+
+      log(
+        'orchestrator',
+        'running',
+        `Discovery was weak (${papers.length} papers). Asking user to confirm fallback entities.`
+      )
+
+      return {
+        status: 'awaiting_confirmation',
+        sessionId: session.id,
+        intent: fallbackIntent,
+        trace: getTrace()
+      }
+    }
 
     session.papers = papers
     updateSession(session.id, { papers })
@@ -340,12 +428,17 @@ export async function continueEntityRun(sessionId, subTopics, onTraceUpdate) {
     seen.add(key)
     return true
   })
-  merged.sort((a, b) => b.relevanceScore - a.relevanceScore)
+  merged.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
 
   // Entity queries always get analysis
-  log('analysis', 'running', `Analysing ${merged.length} papers across domains...`)
-  const analyses = AnalysisAgent.run(merged)
-  log('analysis', 'done', 'Cross-domain analysis complete.')
+  let analyses = {}
+  if (merged.length > 0) {
+    log('analysis', 'running', `Analysing ${merged.length} papers across domains...`)
+    analyses = AnalysisAgent.run(merged)
+    log('analysis', 'done', 'Cross-domain analysis complete.')
+  } else {
+    log('analysis', 'done', 'No papers found after entity fallback. Skipping analysis.')
+  }
 
   // Citations always available
   log('citation', 'running', 'Generating citations...')
@@ -358,5 +451,13 @@ export async function continueEntityRun(sessionId, subTopics, onTraceUpdate) {
   const trace = getTrace()
   updateSession(sessionId, { papers: merged, analyses, citations, trace })
 
-  return { status: 'done', sessionId, papers: merged, analyses, citations, trace }
+  return {
+    status: 'done',
+    sessionId,
+    papers: merged,
+    analyses,
+    citations,
+    trace,
+    fallbackExhausted: merged.length === 0
+  }
 }

@@ -38,47 +38,68 @@ function getSourceLabel(paper) {
   return 'Semantic Scholar'
 }
 
+function safeText(value, fallback = 'Untitled') {
+  const text = String(value || '').trim()
+  return text || fallback
+}
+
+function formatYear(paper, style = 'generic') {
+  if (!paper.year) return style === 'apa' ? '(n.d.)' : 'n.d.'
+  return style === 'apa' ? `(${paper.year})` : String(paper.year)
+}
+
 // ─── Citation Formatters ──────────────────────────────────────────────────────
 function generateAPA(paper) {
   const authors = formatAuthorsAPA(paper.authors)
-  const year = paper.year ? `(${paper.year})` : '(n.d.)'
-  const title = paper.title || 'Untitled'
+  const year = formatYear(paper, 'apa')
+  const title = safeText(paper.title)
   const source = getSourceLabel(paper)
-  const url = paper.url || ''
-  return `${authors} ${year}. ${title}. ${source}. ${url}`
+  const url = safeText(paper.url, '')
+  return `${authors} ${year}. ${title}. ${source}.${url ? ` ${url}` : ''}`
 }
 
 function generateMLA(paper) {
   const authors = formatAuthorsMLA(paper.authors)
-  const title = `"${paper.title || 'Untitled'}"`
+  const title = `"${safeText(paper.title)}."`
   const source = getSourceLabel(paper)
-  const year = paper.year || 'n.d.'
-  const url = paper.url || ''
-  return `${authors}. ${title} ${source}, ${year}, ${url}`
+  const year = formatYear(paper)
+  const url = safeText(paper.url, '')
+  return `${authors}. ${title} ${source}, ${year}.${url ? ` ${url}` : ''}`
 }
 
 function generateIEEE(paper) {
   const authors = formatAuthorsIEEE(paper.authors)
-  const title = `"${paper.title || 'Untitled'}"`
+  const title = `"${safeText(paper.title)}"`
   const source = getSourceLabel(paper)
-  const year = paper.year || 'n.d.'
-  const url = paper.url || ''
-  return `${authors}, ${title} ${source}, ${year}. [Online]. Available: ${url}`
+  const year = formatYear(paper)
+  const url = safeText(paper.url, '')
+  const yearPart = year === 'n.d.' ? year : `${year}`
+  return `${authors}, ${title}, ${source}, ${yearPart}.${url ? ` [Online]. Available: ${url}` : ''}`
+}
+
+function generateChicago(paper) {
+  const primaryAuthor = paper.authors?.[0]?.name || 'Unknown Author'
+  const extraAuthors = (paper.authors?.length || 0) > 1 ? ', et al.' : '.'
+  const title = safeText(paper.title)
+  const source = getSourceLabel(paper)
+  const year = formatYear(paper)
+  const url = safeText(paper.url, '')
+  return `${primaryAuthor}${extraAuthors} "${title}." ${source}, ${year}.${url ? ` ${url}` : ''}`
 }
 
 // ─── BibTeX ───────────────────────────────────────────────────────────────────
 function generateBibtex(paper) {
   const key = (paper.authors?.[0]?.name?.split(' ').pop() || 'Unknown') +
     (paper.year || 'nd') +
-    paper.title?.split(' ')[0]?.toLowerCase()
+    safeText(paper.title, 'paper').split(' ')[0]?.toLowerCase()
 
   const authors = paper.authors?.map(a => a.name).join(' and ') || 'Unknown'
 
   return `@article{${key},
-  title     = {${paper.title || 'Untitled'}},
+  title     = {${safeText(paper.title)}},
   author    = {${authors}},
-  year      = {${paper.year || 'n.d.'}},
-  url       = {${paper.url || ''}},
+  year      = {${paper.year || ''}},
+  url       = {${safeText(paper.url, '')}},
   journal   = {${getSourceLabel(paper)}}
 }`
 }
@@ -89,6 +110,7 @@ function generateAll(paper) {
     APA: generateAPA(paper),
     MLA: generateMLA(paper),
     IEEE: generateIEEE(paper),
+    Chicago: generateChicago(paper),
     bibtex: generateBibtex(paper)
   }
 }
@@ -149,6 +171,7 @@ function exportSessionReport(session) {
       report += `    APA:  ${cite.APA}\n`
       report += `    MLA:  ${cite.MLA}\n`
       report += `    IEEE: ${cite.IEEE}\n`
+      report += `    Chicago: ${cite.Chicago}\n`
     }
 
     report += '\n' + '─'.repeat(60) + '\n\n'
@@ -176,6 +199,7 @@ function exportTxt(papers, citations) {
     content += `APA:   ${c.APA}\n`
     content += `MLA:   ${c.MLA}\n`
     content += `IEEE:  ${c.IEEE}\n\n`
+    content += `Chicago: ${c.Chicago}\n\n`
   })
 
   const blob = new Blob([content], { type: 'text/plain' })
@@ -207,7 +231,7 @@ function exportBib(papers, citations) {
 
 const CitationAgent = {
   generateAll, generateAPA, generateMLA,
-  generateIEEE, generateBibtex,
+  generateIEEE, generateChicago, generateBibtex,
   exportTxt, exportBib, exportSessionReport
 }
 export default CitationAgent

@@ -192,7 +192,7 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
           ✦ Summarize
         </button>
         <button onClick={() => { setExpanded(true); setActiveTab('cite') }} style={btnStyle('#10b981')}>
-          " Cite
+          Cite
         </button>
         <a href={paper.url} target="_blank" rel="noopener noreferrer" style={{
           ...btnStyle('#f59e0b'), textDecoration: 'none'
@@ -224,7 +224,7 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
                 color: activeTab === tab ? '#f1f5f9' : '#475569',
                 marginBottom: -1
               }}>
-                {tab === 'abstract' ? '📄 Abstract' : tab === 'summary' ? '✦ Summary' : '" Citation'}
+                {tab === 'abstract' ? '📄 Abstract' : tab === 'summary' ? '✦ Summary' : 'Cite'}
               </button>
             ))}
           </div>
@@ -296,11 +296,11 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
 )}
 
             {/* Citation tab */}
-            {activeTab === 'cite' && cite && (
+            {activeTab === 'cite' && (
               <div>
                 {/* Style selector */}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                  {['APA', 'MLA', 'IEEE'].map(style => (
+                  {['APA', 'MLA', 'IEEE', 'Chicago'].map(style => (
                     <button key={style} onClick={() => setCiteStyle(style)} style={{
                       padding: '6px 14px', borderRadius: 8, fontSize: 12,
                       fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
@@ -320,25 +320,35 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
                   lineHeight: 1.7, fontFamily: 'monospace',
                   border: '1px solid #1e1e35', marginBottom: 12
                 }}>
-                  {cite[citeStyle]}
+                  {cite?.[citeStyle] || 'Citation unavailable for this paper.'}
                 </div>
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <button onClick={handleCopy} style={{
+                <button onClick={handleCopy} disabled={!cite?.[citeStyle]} style={{
                   ...btnStyle('#6366f1'),
                   padding: '8px 20px',
                   fontSize: 13,
-                  fontWeight: 700
+                  fontWeight: 700,
+                  opacity: cite?.[citeStyle] ? 1 : 0.5,
+                  cursor: cite?.[citeStyle] ? 'pointer' : 'not-allowed'
                 }}>
                   {copied ? '✓ Copied!' : 'Copy Citation'}
                 </button>
                 <div style={{ height: 20, width: 1, background: '#1e1e35' }} />
                 <span style={{ fontSize: 11, color: '#475569' }}>Export:</span>
-                <button onClick={handleExportTxt} style={btnStyle('#06b6d4')}>
+                <button onClick={handleExportTxt} disabled={!cite} style={{
+                  ...btnStyle('#06b6d4'),
+                  opacity: cite ? 1 : 0.5,
+                  cursor: cite ? 'pointer' : 'not-allowed'
+                }}>
                   .txt
                 </button>
-                <button onClick={handleExportBib} style={btnStyle('#10b981')}>
+                <button onClick={handleExportBib} disabled={!cite} style={{
+                  ...btnStyle('#10b981'),
+                  opacity: cite ? 1 : 0.5,
+                  cursor: cite ? 'pointer' : 'not-allowed'
+                }}>
                   .bib
                 </button>
               </div>
