@@ -13,7 +13,6 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
   const [summary, setSummary] = useState(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryLength, setSummaryLength] = useState('medium')
-  const [showCite, setShowCite] = useState(false)
   const [citeStyle, setCiteStyle] = useState('APA')
   const [copied, setCopied] = useState(false)
 
@@ -192,7 +191,7 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
         <button onClick={() => { setExpanded(true); handleSummarize() }} style={btnStyle('#06b6d4')}>
           ✦ Summarize
         </button>
-        <button onClick={() => { setExpanded(true); setActiveTab('cite'); setShowCite(true) }} style={btnStyle('#10b981')}>
+        <button onClick={() => { setExpanded(true); setActiveTab('cite') }} style={btnStyle('#10b981')}>
           " Cite
         </button>
         <a href={paper.url} target="_blank" rel="noopener noreferrer" style={{

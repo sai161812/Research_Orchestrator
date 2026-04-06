@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-export default function Hero({ onSearch }) {
+export default function Hero() {
   const canvasRef = useRef(null)
 
   // Animated grid background

@@ -21,6 +21,22 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function looksLikeTitle(query) {
+  if (!query || typeof query !== 'string') return false
+  const trimmed = query.trim()
+  if (!trimmed) return false
+
+  // Heuristic: title-like input is usually longer, sentence-like,
+  // and often contains connective words.
+  const words = trimmed.split(/\s+/).filter(Boolean)
+  const lower = trimmed.toLowerCase()
+  const hasConnective = /\b(of|for|in|with|using|via|towards|toward|from|and|on)\b/.test(lower)
+  const hasColon = trimmed.includes(':')
+  const hasManyWords = words.length >= 6
+
+  return hasManyWords || hasConnective || hasColon
+}
+
 // Fuzzy title match — exact, substring, or ≥80% token overlap
 function titlesMatch(queryTitle, paperTitle) {
   const norm = s => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()

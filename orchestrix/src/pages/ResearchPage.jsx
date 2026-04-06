@@ -267,6 +267,22 @@ export default function ResearchPage() {
         </div>
       )}
 
+      {/* ── NO RESULTS ── */}
+      {stage === 'results' && papers.length === 0 && (
+        <div style={{
+          maxWidth: 560, margin: '40px auto', textAlign: 'center',
+          padding: 32, background: '#0d0d1a',
+          border: '1px solid #1e1e35', borderRadius: 16
+        }}>
+          <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: 8 }}>
+            No papers were returned.
+          </div>
+          <div style={{ color: '#64748b', fontSize: 13 }}>
+            Try a broader query or different keywords.
+          </div>
+        </div>
+      )}
+
       {/* ── EMPTY STATE ── */}
       {stage === 'idle' && (
         <div style={{

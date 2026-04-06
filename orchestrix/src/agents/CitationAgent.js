@@ -1,7 +1,7 @@
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatAuthorsAPA(authors) {
   if (!authors?.length) return 'Unknown Author'
-  return authors.map((a, i) => {
+  return authors.map((a) => {
     const parts = a.name.trim().split(' ')
     const last = parts[parts.length - 1]
     const initials = parts.slice(0, -1).map(n => n[0] + '.').join(' ')
