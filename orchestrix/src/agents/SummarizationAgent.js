@@ -130,5 +130,34 @@ Respond in exactly this format:
   return await callGroq(prompt)
 }
 
-const SummarizationAgent = { summarizePaper, synthesizePapers }
+async function compareTwoPapers(paperA, paperB) {
+  const prompt = `Compare these two research papers and return the strictly formatted JSON response below. Do not use markdown backticks in your output.
+
+Paper 1: "${paperA.title}" (Citations: ${paperA.citationCount || 0}, Year: ${paperA.year || 'Unknown'})
+Abstract 1: ${paperA.abstract?.slice(0, 400)}
+
+Paper 2: "${paperB.title}" (Citations: ${paperB.citationCount || 0}, Year: ${paperB.year || 'Unknown'})
+Abstract 2: ${paperB.abstract?.slice(0, 400)}
+
+Required Output Format (JSON strictly):
+{
+  "summary_diff": "How the core approaches or topics differ.",
+  "citation_comparison": "Which has more impact based on citations.",
+  "recency_comparison": "Which is more modern and recent.",
+  "key_takeaways": "What the combination of these papers implies."
+}`;
+
+  try {
+    const text = await callGroq(prompt);
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    return {
+      error: 'Failed to generate comparison.',
+      details: e.message
+    };
+  }
+}
+
+const SummarizationAgent = { summarizePaper, synthesizePapers, compareTwoPapers }
 export default SummarizationAgent

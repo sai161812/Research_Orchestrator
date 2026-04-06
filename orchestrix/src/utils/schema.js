@@ -1,6 +1,7 @@
 export const createPaper = () => ({
   id: '',
   title: '',
+  doi: '',
   authors: [],
   year: null,
   abstract: '',

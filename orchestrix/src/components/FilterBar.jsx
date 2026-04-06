@@ -5,7 +5,6 @@ export default function FilterBar({ papers, onFilter }) {
   const [yearTo, setYearTo] = useState('')
   const [minCitations, setMinCitations] = useState('')
   const [sortBy, setSortBy] = useState('relevance')
-  const [source, setSource] = useState('all')
   const [open, setOpen] = useState(false)
 
   const currentYear = new Date().getFullYear()
@@ -14,7 +13,7 @@ export default function FilterBar({ papers, onFilter }) {
   const numericMinCitations = minCitations ? parseInt(minCitations, 10) : null
 
   const hasActiveFilters = Boolean(
-    yearFrom || yearTo || minCitations || source !== 'all' || sortBy !== 'relevance'
+    yearFrom || yearTo || minCitations || sortBy !== 'relevance'
   )
 
   const sortedAndFiltered = useMemo(() => {
@@ -30,8 +29,6 @@ export default function FilterBar({ papers, onFilter }) {
     if (numericMinCitations !== null) {
       filtered = filtered.filter(p => (p.citationCount || 0) >= numericMinCitations)
     }
-    if (source !== 'all') filtered = filtered.filter(p => p.source === source)
-
     if (sortBy === 'relevance') {
       filtered.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
     } else if (sortBy === 'citations') {
@@ -40,7 +37,7 @@ export default function FilterBar({ papers, onFilter }) {
       filtered.sort((a, b) => (b.year || 0) - (a.year || 0))
     }
     return filtered
-  }, [papers, numericMinCitations, numericYearFrom, numericYearTo, sortBy, source])
+  }, [papers, numericMinCitations, numericYearFrom, numericYearTo, sortBy])
 
   const applyFilters = () => {
     onFilter({ papers: sortedAndFiltered, active: hasActiveFilters })
@@ -55,7 +52,6 @@ export default function FilterBar({ papers, onFilter }) {
     setYearTo('')
     setMinCitations('')
     setSortBy('relevance')
-    setSource('all')
     onFilter({ papers, active: false })
   }
 
@@ -185,28 +181,6 @@ export default function FilterBar({ papers, onFilter }) {
                 fontSize: 13, outline: 'none'
               }}
             />
-          </div>
-
-          {/* Source */}
-          <div>
-            <label style={{ fontSize: 11, color: '#475569', fontWeight: 600,
-              display: 'block', marginBottom: 6, textTransform: 'uppercase',
-              letterSpacing: '0.05em' }}>
-              Source
-            </label>
-            <select
-              value={source}
-              onChange={e => setSource(e.target.value)}
-              style={{
-                width: '100%', background: '#12121f',
-                border: '1px solid #1e1e35', borderRadius: 8,
-                padding: '8px 12px', color: '#f1f5f9',
-                fontSize: 13, outline: 'none', cursor: 'pointer'
-              }}>
-              <option value="all">All Sources</option>
-              <option value="semanticscholar">Semantic Scholar</option>
-              <option value="arxiv">arXiv</option>
-            </select>
           </div>
 
           {/* Apply button */}

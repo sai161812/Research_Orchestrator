@@ -116,19 +116,24 @@ export default function TracePanel({ trace, isOpen, onToggle }) {
 
                   {/* Message */}
                   <div style={{
-                    fontSize: 12, color: '#64748b',
-                    lineHeight: 1.5, fontFamily: 'monospace'
+                    fontSize: 12, color: '#f1f5f9',
+                    lineHeight: 1.6, fontFamily: 'monospace',
+                    background: '#04040a', padding: '10px 14px',
+                    borderRadius: 8, border: '1px solid #1e1e35',
+                    marginTop: 8, borderLeft: '3px solid ' + agent.color
                   }}>
+                    <span style={{color: '#6366f1', marginRight: 8}}>[{String(i).padStart(2,'0')}]</span>
                     {step.message}
                   </div>
 
                   {/* Duration */}
                   {step.duration && (
                     <div style={{
-                      fontSize: 10, color: '#2a2a4a',
-                      marginTop: 4, fontFamily: 'monospace'
+                      fontSize: 10, color: '#475569',
+                      marginTop: 6, fontFamily: 'monospace',
+                      textAlign: 'right'
                     }}>
-                      {step.duration}ms
+                      [ EXEC_TIME: {step.duration}ms ]
                     </div>
                   )}
                 </div>

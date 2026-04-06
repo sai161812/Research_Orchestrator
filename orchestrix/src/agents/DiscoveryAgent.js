@@ -1,131 +1,63 @@
 import { createPaper } from '../utils/schema'
+import {
+  normalizeText,
+  computeTitleMatchScore,
+  deduplicateAndMerge
+} from '../utils/paperUtils'
 
 const isProd = import.meta.env.PROD
-
-function scoreRelevance(paper, keywords, recencyBias = false) {
-  const text = `${paper.title} ${paper.abstract}`.toLowerCase()
-  const matched = keywords.filter(k => text.includes(k.toLowerCase())).length
-  const keywordScore = keywords.length > 0 ? matched / keywords.length : 0
-  const currentYear = new Date().getFullYear()
-  const age = currentYear - (paper.year || currentYear)
-  const recencyScore = recencyBias
-    ? Math.max(0, 1 - age / 3)
-    : Math.max(0, 1 - age / 10)
-  const citationScore = Math.min((paper.citationCount || 0) / 1000, 1)
-  return recencyBias
-    ? (keywordScore * 0.4) + (recencyScore * 0.45) + (citationScore * 0.15)
-    : (keywordScore * 0.4) + (recencyScore * 0.25) + (citationScore * 0.35)
-}
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function looksLikeTitle(query) {
-  if (!query || typeof query !== 'string') return false
-  const trimmed = query.trim()
-  if (!trimmed) return false
-
-  // Heuristic: title-like input is usually longer, sentence-like,
-  // and often contains connective words.
-  const words = trimmed.split(/\s+/).filter(Boolean)
-  const lower = trimmed.toLowerCase()
-  const hasConnective = /\b(of|for|in|with|using|via|towards|toward|from|and|on)\b/.test(lower)
-  const hasColon = trimmed.includes(':')
-  const hasManyWords = words.length >= 6
-
-  return hasManyWords || hasConnective || hasColon
-}
-
-// Fuzzy title match — exact, substring, or ≥80% token overlap
-function titlesMatch(queryTitle, paperTitle) {
-  const norm = s => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
-  const q = norm(queryTitle)
-  const p = norm(paperTitle)
-  if (p === q) return true
-  if (p.includes(q) || q.includes(p)) return true
-  const qTokens = new Set(q.split(' ').filter(w => w.length > 2))
-  const pTokens = p.split(' ').filter(w => w.length > 2)
-  if (qTokens.size === 0) return false
-  const overlap = pTokens.filter(t => qTokens.has(t)).length
-  return overlap / qTokens.size >= 0.8
-}
-
-// ── Exact title search via quoted phrase ──────────────────────────────────────
-// Runs FIRST, before the keyword search, with a delay after to avoid 429.
-async function fetchExactTitle(query) {
-  const quotedQuery = `"${query}"`
-  const fields = 'title,authors,year,abstract,citationCount,url'
-
-  // In dev: Vite proxy rewrites /api/semantic-scholar → https://api.semanticscholar.org
-  //         path becomes /graph/v1/paper/search?query=...
-  // In prod: Vercel serverless at /api/semantic-scholar receives query param
-  const url = isProd
-    ? `/api/semantic-scholar?query=${encodeURIComponent(quotedQuery)}&fields=${fields}&offset=0&limit=5`
-    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent(quotedQuery)}&fields=${fields}&offset=0&limit=5`
-
-  try {
-    const res = await fetch(url)
-    if (res.status === 429) {
-      console.warn('fetchExactTitle: rate limited, skipping exact match')
-      return []
-    }
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.data || [])
-      .filter(p => p.title && titlesMatch(query, p.title))
-      .map(p => {
-        const paper = createPaper()
-        paper.id = p.paperId || crypto.randomUUID()
-        paper.title = p.title || 'Untitled'
-        paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
-        paper.year = p.year || null
-        paper.abstract = p.abstract || 'No abstract available.'
-        paper.url = p.url || `https://www.semanticscholar.org/paper/${p.paperId}`
-        paper.citationCount = p.citationCount || 0
-        paper.source = 'semanticscholar'
-        paper.isExactMatch = true
-        return paper
-      })
-  } catch (e) {
-    console.warn('fetchExactTitle error:', e.message)
-    return []
-  }
-}
-
 async function fetchSemanticScholar(query, offset = 0, limit = 10) {
-  const fields = 'title,authors,year,abstract,citationCount,url'
+  const fields = 'paperId,title,authors,year,abstract,citationCount,url,externalIds'
   const url = isProd
     ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
     : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
 
-  try {
-    const res = await fetch(url)
-    if (res.status === 429) {
-      console.warn('fetchSemanticScholar: rate limited')
-      return []
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url)
+      if (res.status === 429) {
+        const retryInMs = 500 * attempt
+        console.warn(`fetchSemanticScholar: rate limited (attempt ${attempt}/2), retrying in ${retryInMs}ms`)
+        await sleep(retryInMs)
+        continue
+      }
+
+      if (!res.ok) {
+        const detail = await res.text()
+        console.warn(`SS failed: status=${res.status} query="${query}" detail=${detail.slice(0, 200)}`)
+        return []
+      }
+
+      const data = await res.json()
+      const rows = Array.isArray(data?.data) ? data.data : []
+      console.log(`SS success: query="${query}" offset=${offset} limit=${limit} returned=${rows.length}`)
+
+      return rows.map(p => {
+        const paper = createPaper()
+        paper.id = p.paperId || crypto.randomUUID()
+        paper.title = p.title || 'Untitled'
+        paper.normalizedTitle = normalizeText(paper.title, true)
+        paper.doi = p.externalIds?.DOI || ''
+        paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
+        paper.year = p.year || null
+        paper.abstract = p.abstract || 'No abstract available.'
+        paper.url = p.url || (p.paperId ? `https://www.semanticscholar.org/paper/${p.paperId}` : '')
+        paper.citationCount = p.citationCount || 0
+        paper.source = 'semanticscholar'
+        return paper
+      })
+    } catch (e) {
+      console.warn(`SS error (attempt ${attempt}/2):`, e.message)
+      if (attempt === 2) return []
+      await sleep(400)
     }
-    if (!res.ok) {
-      console.warn('SS failed:', res.status)
-      return []
-    }
-    const data = await res.json()
-    return (data.data || []).map(p => {
-      const paper = createPaper()
-      paper.id = p.paperId || crypto.randomUUID()
-      paper.title = p.title || 'Untitled'
-      paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
-      paper.year = p.year || null
-      paper.abstract = p.abstract || 'No abstract available.'
-      paper.url = p.url || `https://www.semanticscholar.org/paper/${p.paperId}`
-      paper.citationCount = p.citationCount || 0
-      paper.source = 'semanticscholar'
-      return paper
-    })
-  } catch (e) {
-    console.warn('SS error:', e.message)
-    return []
   }
+  return []
 }
 
 async function fetchArxiv(query, start = 0, maxResults = 10) {
@@ -143,16 +75,19 @@ async function fetchArxiv(query, start = 0, maxResults = 10) {
     const parser = new DOMParser()
     const xml = parser.parseFromString(text, 'application/xml')
     const entries = Array.from(xml.querySelectorAll('entry'))
+    console.log(`arXiv success: query="${query}" start=${start} max=${maxResults} returned=${entries.length}`)
     return entries.map(entry => {
       const paper = createPaper()
       const rawId = entry.querySelector('id')?.textContent || ''
       paper.id = 'arxiv-' + rawId.split('/abs/').pop().replace(/\//g, '-')
       paper.title = entry.querySelector('title')?.textContent?.trim().replace(/\s+/g, ' ') || 'Untitled'
+      paper.normalizedTitle = normalizeText(paper.title, true)
       paper.authors = Array.from(entry.querySelectorAll('author name')).map(n => ({
         name: n.textContent.trim(), id: null
       }))
       const published = entry.querySelector('published')?.textContent || ''
       paper.year = published ? new Date(published).getFullYear() : null
+      paper.doi = entry.querySelector('doi')?.textContent?.trim() || ''
       paper.abstract = entry.querySelector('summary')?.textContent?.trim().replace(/\s+/g, ' ') || 'No abstract available.'
       paper.url = entry.querySelector('id')?.textContent?.trim() || ''
       paper.citationCount = 0
@@ -165,59 +100,61 @@ async function fetchArxiv(query, start = 0, maxResults = 10) {
   }
 }
 
-function deduplicate(papers) {
-  const seen = new Set()
-  return papers.filter(p => {
-    const key = p.title.toLowerCase().replace(/\s+/g, ' ').trim()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-async function run(query, page = 1, recencyBias = false, isPaperTitle = false) {
+async function run(query, page = 1) {
   const limit = 8
   const offset = (page - 1) * limit
-  const keywords = query.toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .split(/\s+/)
-    .filter(w => w.length > 3)
+  console.log('DiscoveryAgent:', query)
 
-  console.log('DiscoveryAgent:', query, { recencyBias, isPaperTitle })
-
-  let exactMatches = []
-
-  // If it's a paper title OR looks like one — try exact match first
-  if (isPaperTitle || looksLikeTitle(query)) {
-    console.log('Trying exact title match...')
-    exactMatches = await fetchExactTitle(query, isProd)
-    console.log(`Exact matches: ${exactMatches.length}`)
-    await sleep(400)
+  let ssPapers = await fetchSemanticScholar(query, offset, limit)
+  await sleep(500)
+  
+  const words = query.split(" ").filter(Boolean);
+  if (words.length >= 3) {
+      console.log('Trying exact title query for Semantic Scholar...')
+      const exactSsPapers = await fetchSemanticScholar(`"${query}"`, 0, 5)
+      ssPapers = [...ssPapers, ...exactSsPapers]
+      await sleep(400)
   }
 
-  const ssPapers = await fetchSemanticScholar(query, offset, limit)
-  await sleep(500)
   const arxivPapers = await fetchArxiv(query, offset, limit)
+  
+  console.log(`Merged source counts before dedupe -> SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
 
-  console.log(`SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
+  let allPapers = [...ssPapers, ...arxivPapers]
+  
+  // Step 5 Detection Flow
+  if (words.length >= 3) {
+      const normalizedQuery = normalizeText(query, true);
+      let maxScore = -1;
+      let topPaperIds = [];
+      
+      allPapers.forEach(paper => {
+          const score = computeTitleMatchScore(normalizedQuery, paper.normalizedTitle);
+          if (score > maxScore) {
+              maxScore = score;
+              topPaperIds = [paper.id];
+          } else if (score === maxScore) {
+              topPaperIds.push(paper.id);
+          }
+      });
+      
+      if (maxScore >= 0.85 && topPaperIds.length > 0) {
+          console.log(`EXACT MATCH FOUND (Score: ${maxScore})`);
+          allPapers = allPapers.map(p => {
+              if (topPaperIds.includes(p.id)) p.isExactMatch = true;
+              return p;
+          });
+      }
+  }
 
-  const exactIds = new Set(exactMatches.map(p => p.id))
-  const rest = deduplicate([...ssPapers, ...arxivPapers])
-    .filter(p => !exactIds.has(p.id))
+  const final = deduplicateAndMerge(allPapers)
 
-  const scored = rest.map(paper => ({
-    ...paper,
-    relevanceScore: scoreRelevance(paper, keywords, recencyBias)
-  }))
-  scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
-
-  const scoredExact = exactMatches.map(p => ({
-    ...p,
-    relevanceScore: 1.0
-  }))
-
-  const final = [...scoredExact, ...scored]
-  console.log(`Total: ${final.length}, exact: ${exactMatches.length}`)
+  const sourceStats = final.reduce((acc, p) => {
+    acc[p.source] = (acc[p.source] || 0) + 1
+    return acc
+  }, {})
+  
+  console.log(`Total after dedupe: ${final.length}, bySource:`, sourceStats)
   return final
 }
 

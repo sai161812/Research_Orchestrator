@@ -33,6 +33,8 @@ export default function ResearchPage() {
   const [pendingSessionId, setPendingSessionId] = useState(null)
   const [page, setPage] = useState(1)
   const [fallbackExhausted, setFallbackExhausted] = useState(false)
+  const [comparing, setComparing] = useState(false)
+  const [compareResult, setCompareResult] = useState(null)
   const inputRef = useRef(null)
 
   const handleSearch = async (q = query) => {
@@ -111,9 +113,16 @@ export default function ResearchPage() {
     )
   }
 
-  const handleExportReport = () => {
-    const session = getSessionById(sessionId)
-    if (session) CitationAgent.exportSessionReport(session)
+  const handleCompare = async () => {
+    if (selectedPapers.length !== 2) return
+    setComparing(true)
+    const { default: SummarizationAgent } = await import('../agents/SummarizationAgent')
+    const result = await SummarizationAgent.compareTwoPapers(selectedPapers[0], selectedPapers[1])
+    
+    if (result && !result.error) {
+      setCompareResult(result)
+    }
+    setComparing(false)
   }
 
   const loadMore = async () => {
@@ -216,17 +225,45 @@ export default function ResearchPage() {
                 </div>
               )}
               <button
-                onClick={handleExportReport}
+                onClick={handleCompare}
+                disabled={selectedPapers.length !== 2 || comparing}
                 style={{
                   padding: '6px 16px', borderRadius: 8, fontSize: 12,
-                  fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                  background: '#10b98115', border: '1px solid #10b98130',
-                  color: '#10b981'
+                  fontWeight: 600, cursor: selectedPapers.length === 2 ? 'pointer' : 'not-allowed', 
+                  transition: 'all 0.2s',
+                  background: selectedPapers.length === 2 ? '#6366f115' : 'transparent', 
+                  border: `1px solid ${selectedPapers.length === 2 ? '#6366f150' : '#1e1e35'}`,
+                  color: selectedPapers.length === 2 ? '#a5b4fc' : '#475569'
                 }}>
-                ↓ Export Report
+                {comparing ? 'Comparing...' : '⚖ Compare (Select 2)'}
               </button>
             </div>
           </div>
+
+          {/* Comparison Result Panel */}
+          {compareResult && (
+            <div style={{
+              background: '#0d0d1a', border: '1px solid #6366f140',
+              borderRadius: 12, padding: 20, marginBottom: 20,
+              boxShadow: '0 4px 24px rgba(99,102,241,0.1)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 15, color: '#f1f5f9', fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{color: '#6366f1'}}>⚖</span> Technical Comparison
+                </h3>
+                <button onClick={() => setCompareResult(null)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+                <div><strong style={{color: '#a5b4fc'}}>Summary Diff:</strong> {compareResult.summary_diff}</div>
+                <div><strong style={{color: '#06b6d4'}}>Citation Impact:</strong> {compareResult.citation_comparison}</div>
+                <div><strong style={{color: '#10b981'}}>Recency:</strong> {compareResult.recency_comparison}</div>
+                <div style={{ marginTop: 8, padding: 12, background: '#12121f', borderRadius: 8, borderLeft: '3px solid #6366f1', color: '#f1f5f9' }}>
+                  <strong>Key Takeaways:</strong> {compareResult.key_takeaways}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Filter bar */}
           <FilterBar

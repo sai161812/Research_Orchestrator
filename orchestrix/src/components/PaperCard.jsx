@@ -362,7 +362,7 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
         @keyframes fadeSlideUp {
           from { opacity: 0; transform: translateY(16px); }
           to   { opacity: 1; transform: translateY(0); }
-        }s
+        }
         @keyframes pulse {
           0%, 100% { opacity: 0.4; }
           50%       { opacity: 0.8; }
