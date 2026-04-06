@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -8,6 +7,9 @@ export default async function handler(req, res) {
     return res.status(200).end()
   }
 
+  // Pull raw query string params — do NOT re-encode them through URLSearchParams
+  // because the query value may already contain quotes ("attention is all you need")
+  // and URLSearchParams would double-encode them.
   const { query, fields, offset, limit } = req.query
 
   if (!query) {
@@ -15,14 +17,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const params = new URLSearchParams({
-      query,
-      fields: fields || 'title,authors,year,abstract,citationCount,url',
-      offset: offset || '0',
-      limit: limit || '10'
-    })
+    // Build the URL by hand so quotes in the query are preserved as-is.
+    // encodeURIComponent converts `"` → `%22` exactly once.
+    const f = fields || 'title,authors,year,abstract,citationCount,url'
+    const o = offset || '0'
+    const l = limit || '10'
 
-    const url = `https://api.semanticscholar.org/graph/v1/paper/search?${params}`
+    const url =
+      `https://api.semanticscholar.org/graph/v1/paper/search` +
+      `?query=${encodeURIComponent(query)}` +
+      `&fields=${encodeURIComponent(f)}` +
+      `&offset=${o}` +
+      `&limit=${l}`
 
     const response = await fetch(url, {
       headers: {
@@ -41,7 +47,6 @@ export default async function handler(req, res) {
 
     const data = await response.json()
     return res.status(200).json(data)
-
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }

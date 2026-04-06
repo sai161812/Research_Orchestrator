@@ -17,51 +17,78 @@ function scoreRelevance(paper, keywords, recencyBias = false) {
     : (keywordScore * 0.4) + (recencyScore * 0.25) + (citationScore * 0.35)
 }
 
-// Detect if query looks like a paper title
-function looksLikeTitle(query) {
-  const words = query.trim().split(/\s+/)
-  // More than 4 words + no question words = likely a title
-  const questionWords = ['what', 'how', 'why', 'when', 'who', 'which', 'recent', 'top', 'best', 'latest']
-  const hasQuestionWord = words.some(w => questionWords.includes(w.toLowerCase()))
-  return words.length >= 4 && !hasQuestionWord
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+// Fuzzy title match — exact, substring, or ≥80% token overlap
+function titlesMatch(queryTitle, paperTitle) {
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+  const q = norm(queryTitle)
+  const p = norm(paperTitle)
+  if (p === q) return true
+  if (p.includes(q) || q.includes(p)) return true
+  const qTokens = new Set(q.split(' ').filter(w => w.length > 2))
+  const pTokens = p.split(' ').filter(w => w.length > 2)
+  if (qTokens.size === 0) return false
+  const overlap = pTokens.filter(t => qTokens.has(t)).length
+  return overlap / qTokens.size >= 0.8
+}
+
+// ── Exact title search via quoted phrase ──────────────────────────────────────
+// Runs FIRST, before the keyword search, with a delay after to avoid 429.
 async function fetchExactTitle(query) {
-  // Semantic Scholar has a direct title search
+  const quotedQuery = `"${query}"`
+  const fields = 'title,authors,year,abstract,citationCount,url'
+
+  // In dev: Vite proxy rewrites /api/semantic-scholar → https://api.semanticscholar.org
+  //         path becomes /graph/v1/paper/search?query=...
+  // In prod: Vercel serverless at /api/semantic-scholar receives query param
   const url = isProd
-    ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=title,authors,year,abstract,citationCount,url&offset=0&limit=3`
-    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent('"' + query + '"')}&fields=title,authors,year,abstract,citationCount,url&offset=0&limit=3`
+    ? `/api/semantic-scholar?query=${encodeURIComponent(quotedQuery)}&fields=${fields}&offset=0&limit=5`
+    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent(quotedQuery)}&fields=${fields}&offset=0&limit=5`
 
   try {
     const res = await fetch(url)
+    if (res.status === 429) {
+      console.warn('fetchExactTitle: rate limited, skipping exact match')
+      return []
+    }
     if (!res.ok) return []
     const data = await res.json()
-
-    return (data.data || []).map(p => {
-      const paper = createPaper()
-      paper.id = p.paperId || crypto.randomUUID()
-      paper.title = p.title || 'Untitled'
-      paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
-      paper.year = p.year || null
-      paper.abstract = p.abstract || 'No abstract available.'
-      paper.url = p.url || `https://www.semanticscholar.org/paper/${p.paperId}`
-      paper.citationCount = p.citationCount || 0
-      paper.source = 'semanticscholar'
-      paper.isExactMatch = true // ← flag for UI badge
-      return paper
-    })
+    return (data.data || [])
+      .filter(p => p.title && titlesMatch(query, p.title))
+      .map(p => {
+        const paper = createPaper()
+        paper.id = p.paperId || crypto.randomUUID()
+        paper.title = p.title || 'Untitled'
+        paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
+        paper.year = p.year || null
+        paper.abstract = p.abstract || 'No abstract available.'
+        paper.url = p.url || `https://www.semanticscholar.org/paper/${p.paperId}`
+        paper.citationCount = p.citationCount || 0
+        paper.source = 'semanticscholar'
+        paper.isExactMatch = true
+        return paper
+      })
   } catch (e) {
+    console.warn('fetchExactTitle error:', e.message)
     return []
   }
 }
 
 async function fetchSemanticScholar(query, offset = 0, limit = 10) {
+  const fields = 'title,authors,year,abstract,citationCount,url'
   const url = isProd
-    ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=title,authors,year,abstract,citationCount,url&offset=${offset}&limit=${limit}`
-    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent(query)}&fields=title,authors,year,abstract,citationCount,url&offset=${offset}&limit=${limit}`
+    ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
+    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
 
   try {
     const res = await fetch(url)
+    if (res.status === 429) {
+      console.warn('fetchSemanticScholar: rate limited')
+      return []
+    }
     if (!res.ok) {
       console.warn('SS failed:', res.status)
       return []
@@ -100,7 +127,6 @@ async function fetchArxiv(query, start = 0, maxResults = 10) {
     const parser = new DOMParser()
     const xml = parser.parseFromString(text, 'application/xml')
     const entries = Array.from(xml.querySelectorAll('entry'))
-
     return entries.map(entry => {
       const paper = createPaper()
       const rawId = entry.querySelector('id')?.textContent || ''
@@ -133,10 +159,6 @@ function deduplicate(papers) {
   })
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
 async function run(query, page = 1, recencyBias = false) {
   const limit = 8
   const offset = (page - 1) * limit
@@ -147,26 +169,34 @@ async function run(query, page = 1, recencyBias = false) {
 
   console.log('DiscoveryAgent:', query)
 
-  // Check if query looks like a paper title
-  const isTitle = looksLikeTitle(query)
-  let exactMatches = []
+  // ── Sequential requests to avoid 429 from Semantic Scholar ──────────────
+  // SS rate limits aggressive parallel requests. We run exact title search
+  // first (1 SS request), wait 600ms, then run keyword search (1 SS request),
+  // then arXiv in parallel with nothing (separate domain, no conflict).
 
-  if (isTitle) {
-    console.log('Detected as paper title — fetching exact match first')
-    exactMatches = await fetchExactTitle(query)
-    await sleep(300)
-  }
+  const exactMatches = await fetchExactTitle(query)
+  console.log(`Exact matches: ${exactMatches.length}`)
 
-  const ssPapers = await fetchSemanticScholar(query, offset, limit)
-  await sleep(500)
-  const arxivPapers = await fetchArxiv(query, offset, limit)
+  await sleep(600) // avoid 429 between two SS requests
 
-  console.log(`Exact: ${exactMatches.length}, SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
+  const [ssPapers, arxivPapers] = await Promise.all([
+    fetchSemanticScholar(query, offset, limit),
+    fetchArxiv(query, offset, limit)         // different domain — safe to parallel
+  ])
 
-  // Merge — exact matches first, then rest deduped
-  const exactIds = new Set(exactMatches.map(p => p.id))
-  const rest = deduplicate([...ssPapers, ...arxivPapers])
-    .filter(p => !exactIds.has(p.id))
+  console.log(`SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
+
+  // Deduplicate keyword results — filter out anything already in exactMatches
+  const exactTitles = new Set(
+    exactMatches.map(p =>
+      p.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+    )
+  )
+
+  const rest = deduplicate([...ssPapers, ...arxivPapers]).filter(p => {
+    const normTitle = p.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+    return !exactTitles.has(normTitle)
+  })
 
   const scored = rest.map(paper => ({
     ...paper,
@@ -174,11 +204,8 @@ async function run(query, page = 1, recencyBias = false) {
   }))
   scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
 
-  // Exact matches get score 1.0 and pinned at top
-  const scoredExact = exactMatches.map(p => ({
-    ...p,
-    relevanceScore: 1.0
-  }))
+  // Exact matches pinned at top with score 1.0
+  const scoredExact = exactMatches.map(p => ({ ...p, relevanceScore: 1.0 }))
 
   const final = [...scoredExact, ...scored]
   console.log(`Total: ${final.length}`)

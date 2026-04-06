@@ -7,7 +7,7 @@ const SOURCE_CONFIG = {
   arxiv: { label: 'arXiv', color: '#06b6d4', short: 'arXiv' },
 }
 
-export default function PaperCard({ paper, index, citations, onSelect, isSelected }) {
+export default function PaperCard({ paper, index, citations, onSelect, isSelected, sessionId }) {
   const [expanded, setExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('abstract')
   const [summary, setSummary] = useState(null)
@@ -26,7 +26,17 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
   const result = await SummarizationAgent.summarizePaper(paper, length)
   setSummary(result)
   setSummaryLoading(false)
+
+  // Save summary back to session in localStorage
+  if (result && sessionId) {
+    const { updateSession, getSessionById } = await import('../store/sessionStore')
+    const session = getSessionById(sessionId)
+    if (session) {
+      const updatedSummaries = { ...session.summaries, [paper.id]: result }
+      updateSession(sessionId, { summaries: updatedSummaries })
+    }
   }
+}
 
   const handleCopy = () => {
     navigator.clipboard.writeText(cite?.[citeStyle] || '')

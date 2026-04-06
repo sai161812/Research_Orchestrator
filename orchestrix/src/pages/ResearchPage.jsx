@@ -234,10 +234,11 @@ export default function ResearchPage() {
               <PaperCard
                 key={paper.id}
                 paper={paper}
-                index={i}
+                index={i} 
                 citations={citations}
                 onSelect={handleSelect}
                 isSelected={selectedPapers.some(p => p.id === paper.id)}
+                sessionId={sessionId}
               />
             ))}
           </div>

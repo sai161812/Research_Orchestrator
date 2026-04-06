@@ -31,9 +31,7 @@ async function callGroq(prompt, maxTokens = 400) {
 async function understandQuery(query) {
   const prompt = `
 You are an academic research assistant. Analyze this user query deeply.
-
 Query: "${query}"
-
 Determine:
 1. type: "topic" (research area), "entity" (person/org/product), "request" (specific ask like top papers/recent/explain)
 2. intent: what the user actually wants
@@ -45,7 +43,6 @@ Determine:
 8. entityType: "person"|"organization"|"concept"|null
 9. subTopics: array of 3-4 research domains (only if entity type)
 10. reasoning: one sentence
-
 Respond ONLY with valid JSON, no markdown:
 {
   "type": "topic|entity|request",
@@ -83,22 +80,14 @@ Respond ONLY with valid JSON, no markdown:
 // ─── Improved Relevance Scoring ───────────────────────────────────────────────
 function scoreRelevance(paper, cleanKeywords, recencyBias) {
   const text = `${paper.title} ${paper.abstract}`.toLowerCase()
-
-  // Keyword match against CLEANED keywords only
   const matched = cleanKeywords.filter(k => text.includes(k.toLowerCase())).length
   const keywordScore = cleanKeywords.length > 0 ? matched / cleanKeywords.length : 0
-
-  // Recency score
   const currentYear = new Date().getFullYear()
   const age = currentYear - (paper.year || currentYear)
   const recencyScore = recencyBias
-    ? Math.max(0, 1 - age / 3)   // steep drop after 3 years
-    : Math.max(0, 1 - age / 10)  // gentle drop over 10 years
-
-  // Citation score
+    ? Math.max(0, 1 - age / 3)
+    : Math.max(0, 1 - age / 10)
   const citationScore = Math.min((paper.citationCount || 0) / 1000, 1)
-
-  // Recency bias shifts weights
   if (recencyBias) {
     return (keywordScore * 0.4) + (recencyScore * 0.45) + (citationScore * 0.15)
   }
@@ -119,7 +108,6 @@ function extractKeywords(queries) {
 // ─── Main Run ─────────────────────────────────────────────────────────────────
 export async function runOrchestrator(query, sessionName, onTraceUpdate) {
   clearTrace()
-
   const session = createSession()
   session.name = sessionName || query
   session.query = query
@@ -135,7 +123,6 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
     log('orchestrator', 'running', `Understanding: "${query}"`)
     const intent = await understandQuery(query)
     session.mode = intent.type
-
     log('orchestrator', 'done',
       `Type: ${intent.type} | Analysis: ${intent.needsAnalysis} | Summary: ${intent.needsSummary} | Citations: ${intent.needsCitations} — ${intent.reasoning}`)
 
@@ -154,16 +141,14 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
     // ── Step 2: Discovery ────────────────────────────────────────────────────
     const queries = [intent.searchQueries?.[0] || query]
     const cleanKeywords = extractKeywords(queries)
-
     log('discovery', 'running',
       `Searching: ${queries.map(q => `"${q}"`).join(', ')}`)
 
     const discStart = Date.now()
     const allPapers = []
-
     for (const q of queries) {
       try {
-        const papers = await DiscoveryAgent.run(q)
+        const papers = await DiscoveryAgent.run(q, 1, intent.recencyBias)
         allPapers.push(...papers)
       } catch (e) {
         log('discovery', 'error', `Failed for "${q}": ${e.message}`)
@@ -179,15 +164,25 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
       return true
     })
 
-    // Re-score with clean keywords + recency bias
-    const papers = unique.map(p => ({
+    // ── FIX: preserve exact matches — re-score only non-exact papers ─────────
+    // DiscoveryAgent pins exact matches with relevanceScore=1.0 and isExactMatch=true.
+    // Re-scoring them here would overwrite that score and let high-citation
+    // keyword results beat them in the sort. We skip re-scoring for exact matches
+    // and keep them at the front regardless of citation count or keyword overlap.
+    const exactMatches = unique.filter(p => p.isExactMatch)
+    const rest = unique.filter(p => !p.isExactMatch)
+
+    const scoredRest = rest.map(p => ({
       ...p,
       relevanceScore: scoreRelevance(p, cleanKeywords, intent.recencyBias)
     }))
-    papers.sort((a, b) => b.relevanceScore - a.relevanceScore)
+    scoredRest.sort((a, b) => b.relevanceScore - a.relevanceScore)
+
+    // Exact matches stay at top with their score=1.0, keyword results follow
+    const papers = [...exactMatches, ...scoredRest]
 
     log('discovery', 'done',
-      `Found ${papers.length} papers, ranked by relevance.`,
+      `Found ${papers.length} papers (${exactMatches.length} exact match${exactMatches.length !== 1 ? 'es' : ''}).`,
       Date.now() - discStart)
 
     session.papers = papers
@@ -227,7 +222,7 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
         'Orchestrator decided: auto-summary not needed. Available on demand.')
     }
 
-    // ── Step 5: Citations — only if needed ───────────────────────────────────
+    // ── Step 5: Citations ────────────────────────────────────────────────────
     let citations = {}
     if (intent.needsCitations) {
       const citStart = Date.now()
@@ -240,7 +235,6 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
         `Generated citations for ${papers.length} papers.`,
         Date.now() - citStart)
     } else {
-      // Always pre-generate silently — available on demand
       for (const paper of papers) {
         citations[paper.id] = CitationAgent.generateAll(paper)
       }
@@ -264,7 +258,6 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate) {
       intent,
       trace
     }
-
   } catch (err) {
     log('orchestrator', 'error', `Fatal error: ${err.message}`)
     updateSession(session.id, { trace: getTrace() })
