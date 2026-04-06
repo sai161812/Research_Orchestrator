@@ -31,3 +31,17 @@ export const deleteSession = (id) => {
   const sessions = getSessions().filter(s => s.id !== id)
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
 }
+
+const ACTIVE_SESSION_KEY = 'orchestrix_active_session'
+
+export const getActiveSessionId = () => {
+  return localStorage.getItem(ACTIVE_SESSION_KEY) || null
+}
+
+export const setActiveSessionId = (id) => {
+  if (id) {
+    localStorage.setItem(ACTIVE_SESSION_KEY, id)
+  } else {
+    localStorage.removeItem(ACTIVE_SESSION_KEY)
+  }
+}

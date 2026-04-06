@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getSessions } from '../store/sessionStore'
+import { getSessions, getActiveSessionId } from '../store/sessionStore'
 import TrendChart from '../components/charts/TrendChart'
 import AuthorsChart from '../components/charts/AuthorsChart'
 import KeywordChart from '../components/charts/KeywordChart'
@@ -35,7 +35,11 @@ function ChartCard({ title, subtitle, children }) {
 
 export default function DashboardPage() {
   const sessions = getSessions()
-  const [selectedId, setSelectedId] = useState(sessions[0]?.id || null)
+  const [selectedId, setSelectedId] = useState(() => {
+    const active = getActiveSessionId()
+    if (active && sessions.find(s => s.id === active)) return active
+    return sessions[0]?.id || null
+  })
   const selected = sessions.find(s => s.id === selectedId)
   const analyses = selected?.analyses || {}
 
