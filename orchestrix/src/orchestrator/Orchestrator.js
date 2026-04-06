@@ -30,49 +30,83 @@ async function callGroq(prompt, maxTokens = 400) {
 // ─── Step 1: Deep Query Understanding ────────────────────────────────────────
 async function understandQuery(query) {
   const prompt = `
-You are an academic research assistant. Analyze this user query deeply.
+You are an expert academic research query classifier. Analyze the user query with deep understanding.
+
 Query: "${query}"
-Determine:
-1. type: "topic" (research area), "entity" (person/org/product), "request" (specific ask like top papers/recent/explain)
-2. intent: what the user actually wants
-3. needsAnalysis: true if user wants trends/stats/overview, false if just listing papers
-4. needsSummary: true if user wants explanation/understanding, false if just finding papers
-5. needsCitations: true if user explicitly wants citations/references
-6. searchQueries: 2-3 optimized academic search queries (clean keywords only, no fluff words like "top" or "recent")
-7. recencyBias: true if user wants recent papers (last 3 years)
-8. entityType: "person"|"organization"|"concept"|null
-9. subTopics: array of 3-4 research domains (only if entity type)
-10. reasoning: one sentence
-Respond ONLY with valid JSON, no markdown:
+
+Classify into EXACTLY one of these types:
+- "paper_title": Query looks like an exact paper title (4+ words, academic sounding, no question words, no "top/best/recent") e.g. "attention is all you need", "bert pre-training of deep bidirectional transformers"
+- "topic": A broad research area or subject e.g. "AI in healthcare", "quantum computing", "deep learning"
+- "entity_person": A specific person e.g. "Geoffrey Hinton", "Yann LeCun", "Elon Musk"
+- "entity_org": A specific organization or lab e.g. "OpenAI", "DeepMind", "Google Brain"
+- "entity_concept": A specific named concept/model/system e.g. "GPT-4", "BERT", "Stable Diffusion"
+- "request_recent": User wants recent/latest papers e.g. "recent advances in NLP", "latest computer vision papers 2024"
+- "request_top": User wants top/best papers e.g. "top papers on reinforcement learning", "most cited ML papers"
+- "request_explain": User wants explanation/understanding e.g. "explain transformers", "how does RLHF work"
+- "request_compare": User wants comparison e.g. "BERT vs GPT", "compare diffusion models and GANs"
+- "request_survey": User wants survey/overview e.g. "survey of NLP methods", "overview of computer vision"
+
+Then determine:
+1. searchQueries: 1-2 optimized academic search queries (clean keywords, no fluff). For paper_title use the exact title. For entity use related research domains.
+2. subTopics: Only for entity types — 3-4 research domains related to the entity
+3. needsAnalysis: true for topic/request_survey/request_top/entity types, false for paper_title/request_explain
+4. needsSummary: true for request_explain types, false otherwise
+5. needsCitations: false unless query explicitly mentions citations/references
+6. recencyBias: true for request_recent types, false otherwise
+7. isPaperTitle: true ONLY if type is paper_title
+8. isEntity: true ONLY if type starts with entity_
+9. entityType: "person" | "organization" | "concept" | null
+10. reasoning: one clear sentence explaining your classification
+
+Respond ONLY with valid JSON, no markdown, no explanation outside JSON:
 {
-  "type": "topic|entity|request",
-  "intent": "...",
+  "type": "paper_title|topic|entity_person|entity_org|entity_concept|request_recent|request_top|request_explain|request_compare|request_survey",
+  "searchQueries": ["query1", "query2"],
+  "subTopics": [],
   "needsAnalysis": true,
   "needsSummary": false,
   "needsCitations": false,
-  "searchQueries": ["query1", "query2"],
   "recencyBias": false,
+  "isPaperTitle": false,
+  "isEntity": false,
   "entityType": null,
-  "subTopics": [],
   "reasoning": "..."
 }
+
+Examples:
+- "attention is all you need" → type: paper_title, isPaperTitle: true, needsAnalysis: false
+- "Geoffrey Hinton" → type: entity_person, isEntity: true, entityType: person, subTopics: [backpropagation, deep learning, neural networks, capsule networks]
+- "explain how transformers work" → type: request_explain, needsSummary: true, needsAnalysis: false
+- "recent NLP advances 2024" → type: request_recent, recencyBias: true, needsAnalysis: true
+- "BERT vs GPT comparison" → type: request_compare, needsAnalysis: true, searchQueries: ["BERT language model", "GPT language model"]
+- "OpenAI" → type: entity_org, isEntity: true, entityType: organization, subTopics: [large language models, reinforcement learning from human feedback, AI safety, GPT architecture]
 `
+
   try {
-    const text = await callGroq(prompt, 500)
+    const text = await callGroq(prompt, 600)
     const clean = text.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
-  } catch {
+    const parsed = JSON.parse(clean)
+
+    // Normalize — map new types to pipeline decisions
+    return {
+      ...parsed,
+      // Keep backward compat — treat all entity_ types as entity for confirmation flow
+      type: parsed.isEntity ? 'entity' : parsed.type
+    }
+  } catch (e) {
+    console.warn('Intent classification failed, using fallback:', e.message)
     return {
       type: 'topic',
-      intent: 'find papers',
+      searchQueries: [query],
+      subTopics: [],
       needsAnalysis: true,
       needsSummary: false,
       needsCitations: false,
-      searchQueries: [query],
       recencyBias: false,
+      isPaperTitle: false,
+      isEntity: false,
       entityType: null,
-      subTopics: [],
-      reasoning: 'Fallback to direct search'
+      reasoning: 'Fallback — classification failed'
     }
   }
 }

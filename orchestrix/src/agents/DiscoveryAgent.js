@@ -159,7 +159,7 @@ function deduplicate(papers) {
   })
 }
 
-async function run(query, page = 1, recencyBias = false) {
+async function run(query, page = 1, recencyBias = false, isPaperTitle = false) {
   const limit = 8
   const offset = (page - 1) * limit
   const keywords = query.toLowerCase()
@@ -167,36 +167,27 @@ async function run(query, page = 1, recencyBias = false) {
     .split(/\s+/)
     .filter(w => w.length > 3)
 
-  console.log('DiscoveryAgent:', query)
+  console.log('DiscoveryAgent:', query, { recencyBias, isPaperTitle })
 
-  // ── Sequential requests to avoid 429 from Semantic Scholar ──────────────
-  // SS rate limits aggressive parallel requests. We run exact title search
-  // first (1 SS request), wait 600ms, then run keyword search (1 SS request),
-  // then arXiv in parallel with nothing (separate domain, no conflict).
+  let exactMatches = []
 
-  const exactMatches = await fetchExactTitle(query)
-  console.log(`Exact matches: ${exactMatches.length}`)
+  // If it's a paper title OR looks like one — try exact match first
+  if (isPaperTitle || looksLikeTitle(query)) {
+    console.log('Trying exact title match...')
+    exactMatches = await fetchExactTitle(query, isProd)
+    console.log(`Exact matches: ${exactMatches.length}`)
+    await sleep(400)
+  }
 
-  await sleep(600) // avoid 429 between two SS requests
-
-  const [ssPapers, arxivPapers] = await Promise.all([
-    fetchSemanticScholar(query, offset, limit),
-    fetchArxiv(query, offset, limit)         // different domain — safe to parallel
-  ])
+  const ssPapers = await fetchSemanticScholar(query, offset, limit)
+  await sleep(500)
+  const arxivPapers = await fetchArxiv(query, offset, limit)
 
   console.log(`SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
 
-  // Deduplicate keyword results — filter out anything already in exactMatches
-  const exactTitles = new Set(
-    exactMatches.map(p =>
-      p.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
-    )
-  )
-
-  const rest = deduplicate([...ssPapers, ...arxivPapers]).filter(p => {
-    const normTitle = p.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
-    return !exactTitles.has(normTitle)
-  })
+  const exactIds = new Set(exactMatches.map(p => p.id))
+  const rest = deduplicate([...ssPapers, ...arxivPapers])
+    .filter(p => !exactIds.has(p.id))
 
   const scored = rest.map(paper => ({
     ...paper,
@@ -204,11 +195,13 @@ async function run(query, page = 1, recencyBias = false) {
   }))
   scored.sort((a, b) => b.relevanceScore - a.relevanceScore)
 
-  // Exact matches pinned at top with score 1.0
-  const scoredExact = exactMatches.map(p => ({ ...p, relevanceScore: 1.0 }))
+  const scoredExact = exactMatches.map(p => ({
+    ...p,
+    relevanceScore: 1.0
+  }))
 
   const final = [...scoredExact, ...scored]
-  console.log(`Total: ${final.length}`)
+  console.log(`Total: ${final.length}, exact: ${exactMatches.length}`)
   return final
 }
 
