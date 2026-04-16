@@ -66,16 +66,17 @@ export default function FilterBar({ papers, onFilter }) {
           onClick={() => setOpen(o => !o)}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '7px 16px', borderRadius: 8, fontSize: 12,
-            fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-            background: open ? '#6366f115' : 'transparent',
-            border: `1px solid ${open ? '#6366f140' : '#1e1e35'}`,
-            color: open ? '#a5b4fc' : '#64748b'
+            padding: '6px 14px', borderRadius: 4, fontSize: 11,
+            fontWeight: 600, cursor: 'pointer', transition: 'all var(--trans-fast)',
+            background: open ? 'var(--text-secondary)' : 'var(--bg-primary)',
+            border: `1px solid var(--border-color)`,
+            color: open ? 'var(--bg-primary)' : 'var(--text-primary)',
+            textTransform: 'uppercase', letterSpacing: '0.05em'
           }}>
-          ⚙ Filters {hasActiveFilters && (
+          FILTERS {hasActiveFilters && (
             <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: '#6366f1', display: 'inline-block'
+              width: 4, height: 4, borderRadius: '50%',
+              background: open ? 'var(--bg-primary)' : 'var(--text-primary)', display: 'inline-block'
             }} />
           )}
         </button>
@@ -86,25 +87,26 @@ export default function FilterBar({ papers, onFilter }) {
             <button key={s} onClick={() => {
               setSortBy(s)
             }} style={{
-              padding: '5px 12px', borderRadius: 20, fontSize: 11,
-              fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-              background: sortBy === s ? '#6366f115' : 'transparent',
-              border: `1px solid ${sortBy === s ? '#6366f140' : '#1e1e35'}`,
-              color: sortBy === s ? '#a5b4fc' : '#475569',
-              textTransform: 'capitalize'
+              padding: '6px 12px', borderRadius: 4, fontSize: 11,
+              fontWeight: 600, cursor: 'pointer', transition: 'all var(--trans-fast)',
+              background: sortBy === s ? 'var(--text-secondary)' : 'var(--bg-primary)',
+              border: `1px solid var(--border-color)`,
+              color: sortBy === s ? 'var(--bg-primary)' : 'var(--text-secondary)',
+              textTransform: 'uppercase', letterSpacing: '0.05em'
             }}>
-              {s === 'relevance' ? '★ Relevance' : s === 'citations' ? '↑ Citations' : 'Year'}
+              {s}
             </button>
           ))}
         </div>
 
         {hasActiveFilters && (
           <button onClick={reset} style={{
-            padding: '5px 12px', borderRadius: 20, fontSize: 11,
-            background: 'transparent', border: '1px solid #ef444430',
-            color: '#ef4444', cursor: 'pointer', fontWeight: 600
+            padding: '6px 12px', borderRadius: 4, fontSize: 11,
+            background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+            color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.05em'
           }}>
-            ✕ Reset
+            RESET
           </button>
         )}
       </div>
@@ -112,14 +114,14 @@ export default function FilterBar({ papers, onFilter }) {
       {/* Expanded filter panel */}
       {open && (
         <div style={{
-          background: '#0d0d1a', border: '1px solid #1e1e35',
-          borderRadius: 12, padding: '20px 24px',
+          background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+          borderRadius: 8, padding: '20px 24px',
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
           gap: 16, animation: 'fadeIn 0.2s ease'
         }}>
           {/* Year from */}
           <div>
-            <label style={{ fontSize: 11, color: '#475569', fontWeight: 600,
+            <label className="mono-text" style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600,
               display: 'block', marginBottom: 6, textTransform: 'uppercase',
               letterSpacing: '0.05em' }}>
               Year From
@@ -128,20 +130,21 @@ export default function FilterBar({ papers, onFilter }) {
               type="number"
               value={yearFrom}
               onChange={e => setYearFrom(e.target.value)}
-              placeholder="e.g. 2020"
+              placeholder="1900"
               min="1900" max={currentYear}
               style={{
-                width: '100%', background: '#12121f',
-                border: '1px solid #1e1e35', borderRadius: 8,
-                padding: '8px 12px', color: '#f1f5f9',
-                fontSize: 13, outline: 'none'
+                width: '100%', background: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)', borderRadius: 4,
+                padding: '8px 12px', color: 'var(--text-primary)',
+                fontSize: 13, outline: 'none',
+                fontFamily: 'var(--font-sans)'
               }}
             />
           </div>
 
           {/* Year to */}
           <div>
-            <label style={{ fontSize: 11, color: '#475569', fontWeight: 600,
+            <label className="mono-text" style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600,
               display: 'block', marginBottom: 6, textTransform: 'uppercase',
               letterSpacing: '0.05em' }}>
               Year To
@@ -150,20 +153,21 @@ export default function FilterBar({ papers, onFilter }) {
               type="number"
               value={yearTo}
               onChange={e => setYearTo(e.target.value)}
-              placeholder={`e.g. ${currentYear}`}
+              placeholder={`${currentYear}`}
               min="1900" max={currentYear}
               style={{
-                width: '100%', background: '#12121f',
-                border: '1px solid #1e1e35', borderRadius: 8,
-                padding: '8px 12px', color: '#f1f5f9',
-                fontSize: 13, outline: 'none'
+                width: '100%', background: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)', borderRadius: 4,
+                padding: '8px 12px', color: 'var(--text-primary)',
+                fontSize: 13, outline: 'none',
+                fontFamily: 'var(--font-sans)'
               }}
             />
           </div>
 
           {/* Min citations */}
           <div>
-            <label style={{ fontSize: 11, color: '#475569', fontWeight: 600,
+            <label className="mono-text" style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600,
               display: 'block', marginBottom: 6, textTransform: 'uppercase',
               letterSpacing: '0.05em' }}>
               Min Citations
@@ -172,13 +176,14 @@ export default function FilterBar({ papers, onFilter }) {
               type="number"
               value={minCitations}
               onChange={e => setMinCitations(e.target.value)}
-              placeholder="e.g. 50"
+              placeholder="0"
               min="0"
               style={{
-                width: '100%', background: '#12121f',
-                border: '1px solid #1e1e35', borderRadius: 8,
-                padding: '8px 12px', color: '#f1f5f9',
-                fontSize: 13, outline: 'none'
+                width: '100%', background: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)', borderRadius: 4,
+                padding: '8px 12px', color: 'var(--text-primary)',
+                fontSize: 13, outline: 'none',
+                fontFamily: 'var(--font-sans)'
               }}
             />
           </div>
@@ -186,19 +191,20 @@ export default function FilterBar({ papers, onFilter }) {
           {/* Apply button */}
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
             <button onClick={applyFilters} style={{
-              width: '100%', padding: '9px 16px', borderRadius: 8,
-              fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-              border: 'none', color: 'white',
-              boxShadow: '0 4px 16px #6366f140'
+              width: '100%', padding: '9px 16px', borderRadius: 4,
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: 'var(--text-primary)',
+              border: '1px solid var(--text-primary)', color: 'var(--bg-primary)',
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+              transition: 'background var(--trans-fast)'
             }}>
-              Apply Filters
+              APPLY
             </button>
           </div>
         </div>
       )}
 
-      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
     </div>
   )
 }
