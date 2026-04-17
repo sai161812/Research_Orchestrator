@@ -57,7 +57,9 @@ function ruleBasedClassify(query) {
     type,
     searchQueries: [query],
     needsAnalysis: type !== 'title',
-    needsSummary: type === 'title' || q.includes('explain'),
+    // Auto-summary is expensive and slows first response significantly.
+    // Keep it for "explain" intents; skip for plain title lookup.
+    needsSummary: q.includes('explain'),
     needsCitations: true,
     recencyBias: q.includes('recent') || q.includes('latest'),
     reasoning: `Rule-based classifier assigned: ${type}`
@@ -93,6 +95,37 @@ Return strict JSON:
     console.warn('Intent classification failed, using fallback:', e.message);
     ruleIntent.type = 'topic';
     return ruleIntent;
+  }
+}
+
+async function expandQuery(query) {
+  const prompt = `
+You are helping refine an academic research search.
+Given the original query: "${query}"
+Generate exactly TWO related, more specific sub-queries that would retrieve complementary papers.
+
+Return STRICT JSON:
+{
+  "subQueries": [
+    "first expanded query",
+    "second expanded query"
+  ]
+}`;
+
+  try {
+    const text = await callGroq(prompt, 200);
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    const arr = Array.isArray(parsed.subQueries) ? parsed.subQueries.map(String).filter(Boolean) : [];
+    return arr.slice(0, 2);
+  } catch (e) {
+    console.warn('Query expansion failed, falling back:', e.message);
+    const base = query.trim();
+    if (!base) return [];
+    return [
+      `${base} applications`,
+      `${base} recent advances`
+    ];
   }
 }
 
@@ -156,35 +189,66 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate, filters
       return await continueEntityRun(session.id, subTopics, onTraceUpdate);
     }
 
-    const queries = intent.searchQueries || [query]
-    log('discovery', 'running', `[DISCOVERY INIT] Launching concurrent fetch queries: ${queries.map(q => `"${q}"`).join(', ')}`)
+    const expanded = intent.type === 'title' ? [] : await expandQuery(query);
+    const baseQueries = intent.searchQueries && intent.searchQueries.length ? intent.searchQueries : [query];
+    const primaryQuery = baseQueries[0];
+    const queries = [primaryQuery, ...expanded];
+
+    if (expanded.length === 2) {
+      log('orchestrator', 'running',
+        `[QUERY EXPANSION] Original: "${query}" → Sub-queries: "${expanded[0]}", "${expanded[1]}"`);
+    }
+
+    log('discovery', 'running',
+      `[DISCOVERY INIT] Launching concurrent fetch queries: ${queries.map(q => `"${q}"`).join(', ')}`)
 
     const discStart = Date.now()
-    const allPapers = []
-    for (const q of queries) {
-      try {
-        const papers = await DiscoveryAgent.run(q, 1)
-        allPapers.push(...papers)
-      } catch (e) {
-        log('discovery', 'error', `Failed for "${q}": ${e.message}`)
-      }
-    }
+    const batches = await Promise.all(
+      queries.map(async (q) => {
+        try {
+          return await DiscoveryAgent.run(q, 1)
+        } catch (e) {
+          log('discovery', 'error', `Failed for "${q}": ${e.message}`)
+          return []
+        }
+      })
+    )
+    const allPapers = batches.flat()
 
     // deduplicateAndMerge handles exact match preservation and DOI + normalized title matching
     // DiscoveryAgent already deduplicates internally within one query, but Orchestrator resolves multiple queries.
     const unique = deduplicateAndMerge(allPapers)
 
-    // Score using the Hybrid Ranking system
+    // Score using the Hybrid Ranking system for downstream components,
+    // but final ordering is driven by citation count + recency.
     let papers = unique.map(p => ({
-        ...p,
-        relevanceScore: hybridRank(p, query)
+      ...p,
+      relevanceScore: hybridRank(p, query)
     }))
-    
-    // Sort initially by semantic ranking (hybridRank)
-    papers.sort((a, b) => b.relevanceScore - a.relevanceScore)
 
-    // Apply Smart Filters (Task 7)
+    // Apply Smart Filters (min year/citations etc.)
     papers = applySmartFilters(papers, filters)
+
+    // Final re-ranking:
+    // 1) exact title matches first
+    // 2) then hybrid relevance
+    // 3) then citation + recency tie-breakers
+    papers.sort((a, b) => {
+      const exactA = a.isExactMatch ? 1 : 0
+      const exactB = b.isExactMatch ? 1 : 0
+      if (exactB !== exactA) return exactB - exactA
+
+      const ra = a.relevanceScore || 0
+      const rb = b.relevanceScore || 0
+      if (rb !== ra) return rb - ra
+
+      const ca = a.citationCount || 0
+      const cb = b.citationCount || 0
+      if (cb !== ca) return cb - ca
+      const ya = a.year || 0
+      const yb = b.year || 0
+      return yb - ya
+    })
 
     const exactMatches = papers.filter(p => p.isExactMatch).length
     const sourceCounts = papers.reduce((acc, p) => {
@@ -193,11 +257,17 @@ export async function runOrchestrator(query, sessionName, onTraceUpdate, filters
     }, {})
 
     log('discovery', 'done',
-      `[MERGE COMPLETE] Target space resolved. Unique Papers: ${papers.length}. Exact Top-Tier Hits: ${exactMatches}. Dist: ${JSON.stringify(sourceCounts)}`,
+      `[MERGE COMPLETE] Original + expanded queries merged. Final unique papers: ${papers.length}. Exact Top-Tier Hits: ${exactMatches}. Dist: ${JSON.stringify(sourceCounts)}`,
       Date.now() - discStart)
 
     // Smart Fallback
     const weakResults = papers.length === 0 || (papers.length < 3 && papers[0]?.relevanceScore < 0.2 && !papers[0]?.isExactMatch)
+    // For title-intent queries, never auto-convert into entity/topic fallback.
+    // Returning related papers here is surprising when user asked for one specific paper.
+    if (intent.type === 'title') {
+      session.papers = papers
+      updateSession(session.id, { papers })
+    } else
     if (weakResults) {
       const fallback = await suggestFallbackEntities(query)
       const fallbackIntent = {

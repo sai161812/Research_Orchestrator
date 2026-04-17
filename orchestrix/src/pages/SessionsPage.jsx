@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSessions, deleteSession, updateSession, setActiveSessionId } from '../store/sessionStore'
+import CitationAgent from '../agents/CitationAgent'
 
 export default function SessionsPage() {
   const navigate = useNavigate()
@@ -8,6 +9,7 @@ export default function SessionsPage() {
   const [editingNote, setEditingNote] = useState(null)
   const [noteText, setNoteText] = useState('')
   const [compareIds, setCompareIds] = useState([])
+  const [pdfStyle, setPdfStyle] = useState('APA')
 
   const refresh = () => setSessions(getSessions())
 
@@ -56,6 +58,30 @@ export default function SessionsPage() {
             <p style={{ color: '#475569', fontSize: 14 }}>
               {sessions.length} saved session{sessions.length !== 1 ? 's' : ''}
             </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+              <span style={{ fontWeight: 500 }}>PDF citation style:</span>
+              <select
+                value={pdfStyle}
+                onChange={e => setPdfStyle(e.target.value)}
+                style={{
+                  background: '#0d0d1a',
+                  border: '1px solid #1e1e35',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  color: '#e5e7eb',
+                  fontSize: 12,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="APA">APA</option>
+                <option value="MLA">MLA</option>
+                <option value="IEEE">IEEE</option>
+                <option value="Chicago">Chicago</option>
+              </select>
+            </div>
           </div>
           {compareIds.length === 2 && (
             <button
@@ -153,6 +179,20 @@ export default function SessionsPage() {
 
                     {/* Actions */}
                     <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => CitationAgent.exportSessionPdf(session, pdfStyle)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          background: '#6366f120',
+                          border: '1px solid #6366f140',
+                          color: '#a5b4fc',
+                          cursor: 'pointer',
+                          fontWeight: 600
+                        }}>
+                        Export PDF
+                      </button>
                       <button
                         onClick={() => handleLoad(session.id)}
                         style={{

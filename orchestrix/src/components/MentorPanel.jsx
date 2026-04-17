@@ -7,142 +7,146 @@ export default function MentorPanel({ paper, onClose }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    let cancelled = false
-    async function fetch() {
+    async function fetchMentorData() {
       setLoading(true)
-      setData(null)
-      setError(null)
       const res = await LearningAgent.generateLearningPath(paper)
-      if (cancelled) return
-      if (res.error) setError(res.error)
-      else setData(res)
+      if (res.error) {
+        setError(res.error)
+      } else {
+        setData(res)
+      }
       setLoading(false)
     }
-    fetch()
-    return () => { cancelled = true }
-  }, [paper?.id])
-
-  if (loading) {
-    return (
-      <div>
-        <div className="mono-text" style={{
-          fontSize: 11, color: 'var(--text-muted)', marginBottom: 20,
-          animation: 'mentorPulse 1.5s infinite'
-        }}>
-          Analyzing paper structure...
-        </div>
-        {[...Array(3)].map((_, i) => (
-          <div key={i} style={{
-            height: 56, background: 'var(--bg-surface)', borderRadius: 6,
-            marginBottom: 12, animation: 'mentorPulse 2s infinite',
-            animationDelay: `${i * 0.15}s`,
-            border: '1px solid var(--border-color)'
-          }} />
-        ))}
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="mono-text" style={{ 
-        color: 'var(--text-muted)', fontSize: 12, 
-        padding: 20, background: 'var(--bg-primary)', 
-        borderRadius: 6, border: '1px solid var(--border-color)' 
-      }}>
-        Error generating learning path: {error}
-      </div>
-    )
-  }
-
-  if (!data) return null
+    fetchMentorData()
+  }, [paper])
 
   return (
-    <div style={{ animation: 'mentorFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both' }}>
+    <div style={{
+      position: 'fixed', top: 0, right: 0, bottom: 0, width: 420,
+      background: '#04040a', borderLeft: '1px solid #1e1e35',
+      boxShadow: '-10px 0 40px rgba(0,0,0,0.5)', zIndex: 1000,
+      display: 'flex', flexDirection: 'column',
+      animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '24px', borderBottom: '1px solid #1e1e35',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 24 }}>🎓</span>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>
+              AI Mentor
+            </h2>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+              Learning Path Generator
+            </div>
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          background: 'transparent', border: 'none', color: '#64748b',
+          fontSize: 20, cursor: 'pointer'
+        }}>✕</button>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+        {loading ? (
+          <div>
+            <div style={{
+              fontSize: 14, color: '#f59e0b', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24
+            }}>
+              <span style={{ animation: 'pulse 1.5s infinite' }}>●</span>
+              Analyzing paper geometry...
+            </div>
+            {[...Array(4)].map((_, i) => (
+              <div key={i} style={{
+                height: 60, background: '#12121f', borderRadius: 12,
+                marginBottom: 16, animation: 'pulse 2s infinite',
+                animationDelay: `${i * 0.2}s`
+              }} />
+            ))}
+          </div>
+        ) : error ? (
+          <div style={{ color: '#ef4444', fontSize: 14 }}>
+            {error}
+          </div>
+        ) : data ? (
+          <div style={{ animation: 'fadeSlideUp 0.4s ease' }}>
+            {/* Prerequisite Glossary */}
+            <div style={{ marginBottom: 32 }}>
+              <h3 style={{
+                fontSize: 14, fontWeight: 700, color: '#94a3b8',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+                marginBottom: 16
+              }}>Key Concepts Glossary</h3>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {data.key_concepts?.map((c, i) => (
+                  <div key={i} style={{
+                    background: '#12121f', border: '1px solid #1e1e35',
+                    borderRadius: 8, padding: '12px 16px', width: '100%'
+                  }}>
+                    <strong style={{ color: '#a5b4fc', fontSize: 14, display: 'block', marginBottom: 6 }}>
+                      {c.concept}
+                    </strong>
+                    <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+                      {c.explanation}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Learning Path */}
+            <div>
+              <h3 style={{
+                fontSize: 14, fontWeight: 700, color: '#94a3b8',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+                marginBottom: 16
+              }}>Recommended Learning Path</h3>
+              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Timeline line */}
+                <div style={{
+                  position: 'absolute', left: 16, top: 20, bottom: 20,
+                  width: 2, background: '#1e1e35', zIndex: 0
+                }} />
+                
+                {data.learning_path?.map((step, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 16, position: 'relative', zIndex: 1 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: '#04040a', border: '2px solid #6366f1',
+                      color: '#6366f1', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: 14, fontWeight: 700,
+                      flexShrink: 0, marginTop: 4
+                    }}>
+                      {step.step}
+                    </div>
+                    <div style={{
+                      background: '#6366f110', border: '1px solid #6366f130',
+                      borderRadius: 12, padding: 16, flex: 1
+                    }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', marginBottom: 6 }}>
+                        {step.topic}
+                      </div>
+                      <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>
+                        {step.description}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
       
-      {/* Key Concepts */}
-      <div style={{ marginBottom: 28 }}>
-        <div className="mono-text" style={{
-          fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
-          letterSpacing: '0.06em', marginBottom: 14
-        }}>
-          KEY CONCEPTS
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {data.key_concepts?.map((c, i) => (
-            <div key={i} style={{
-              background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
-              borderRadius: 6, padding: '12px 14px',
-              transition: 'border-color 0.15s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-highlight)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
-            >
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
-                {c.concept}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                {c.explanation}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Learning Path */}
-      <div>
-        <div className="mono-text" style={{
-          fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
-          letterSpacing: '0.06em', marginBottom: 14
-        }}>
-          LEARNING PROGRESSION
-        </div>
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Vertical timeline */}
-          <div style={{
-            position: 'absolute', left: 11, top: 14, bottom: 18,
-            width: 1, background: 'var(--border-color)', zIndex: 0
-          }} />
-          
-          {data.learning_path?.map((step, i) => (
-            <div key={i} style={{ display: 'flex', gap: 14, position: 'relative', zIndex: 1 }}>
-              <div className="mono-text" style={{
-                width: 24, height: 24, borderRadius: '50%',
-                background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
-                color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: 10, fontWeight: 600,
-                flexShrink: 0, marginTop: 2
-              }}>
-                {step.step}
-              </div>
-              <div style={{
-                background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
-                borderRadius: 6, padding: '12px 14px', flex: 1,
-                transition: 'border-color 0.15s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-highlight)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  {step.topic}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  {step.description}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <style>{`
-        @keyframes mentorFadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes mentorPulse {
-          0%, 100% { opacity: 1; }
-          50%      { opacity: 0.4; }
+        @keyframes slideIn {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
         }
       `}</style>
     </div>

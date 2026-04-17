@@ -186,6 +186,176 @@ function exportSessionReport(session) {
   URL.revokeObjectURL(url)
 }
 
+// ─── Session PDF Export (Print-Friendly) ───────────────────────────────────────
+function exportSessionPdf(session, style = 'APA') {
+  const papers = session.papers || []
+  const citations = session.citations || {}
+  const summaries = session.summaries || {}
+  const analyses = session.analyses || {}
+
+  const title = `Orchestrix Research Report`
+  const sessionLabel = session.name || session.query || 'Untitled Session'
+  const createdAt = new Date(session.timestamp).toLocaleString()
+
+  const escapeHtml = (str) => String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  let bodyContent = ''
+
+  // Header
+  bodyContent += `<h1>${escapeHtml(title)}</h1>`
+  bodyContent += `<p class="meta"><strong>Session:</strong> ${escapeHtml(sessionLabel)}</p>`
+  bodyContent += `<p class="meta"><strong>Query:</strong> ${escapeHtml(session.query || '')}</p>`
+  bodyContent += `<p class="meta"><strong>Date:</strong> ${escapeHtml(createdAt)}</p>`
+  bodyContent += `<p class="meta"><strong>Total Papers:</strong> ${papers.length}</p>`
+
+  // Analyses (if available)
+  if (analyses && Object.keys(analyses).length > 0) {
+    bodyContent += `<h2>Analysis Summary</h2>`
+    bodyContent += `<ul>`
+    if (analyses.averageCitations != null) {
+      bodyContent += `<li><strong>Average Citations:</strong> ${escapeHtml(analyses.averageCitations)}</li>`
+    }
+    if (analyses.yearRange) {
+      bodyContent += `<li><strong>Year Range:</strong> ${escapeHtml(analyses.yearRange.min)}–${escapeHtml(analyses.yearRange.max)}</li>`
+    }
+    if (analyses.keywordFrequency?.length) {
+      bodyContent += `<li><strong>Top Keyword:</strong> ${escapeHtml(analyses.keywordFrequency[0].word)}</li>`
+    }
+    if (analyses.topAuthors?.length) {
+      bodyContent += `<li><strong>Top Author:</strong> ${escapeHtml(analyses.topAuthors[0].name)}</li>`
+    }
+    if (analyses.emergingTopics?.length) {
+      bodyContent += `<li><strong>Emerging Topics:</strong> ${escapeHtml(analyses.emergingTopics.map(t => t.word).join(', '))}</li>`
+    }
+    bodyContent += `</ul>`
+  }
+
+  // Papers
+  if (papers.length > 0) {
+    bodyContent += `<h2>Papers</h2>`
+    papers.forEach((paper, index) => {
+      const cite = citations[paper.id]
+      const summary = summaries[paper.id]
+      const citationText = cite?.[style]
+
+      bodyContent += `<div class="paper">`
+      bodyContent += `<h3>${index + 1}. ${escapeHtml(paper.title || 'Untitled')}</h3>`
+      bodyContent += `<p class="meta"><strong>Authors:</strong> ${escapeHtml(paper.authors?.map(a => a.name).join(', ') || 'Unknown')}</p>`
+      bodyContent += `<p class="meta"><strong>Year:</strong> ${escapeHtml(paper.year || 'n.d.')} &nbsp;|&nbsp; <strong>Citations:</strong> ${escapeHtml(paper.citationCount || 0)} &nbsp;|&nbsp; <strong>Source:</strong> ${escapeHtml(paper.source || '')}</p>`
+      if (paper.url) {
+        bodyContent += `<p class="meta"><strong>Link:</strong> <a href="${escapeHtml(paper.url)}">${escapeHtml(paper.url)}</a></p>`
+      }
+      if (paper.abstract) {
+        bodyContent += `<h4>Abstract</h4>`
+        bodyContent += `<p>${escapeHtml(paper.abstract)}</p>`
+      }
+      if (summary) {
+        bodyContent += `<h4>Summary</h4>`
+        bodyContent += `<p>${escapeHtml(summary).replace(/\n/g, '<br/>')}</p>`
+      }
+      if (citationText) {
+        bodyContent += `<h4>Citation (${escapeHtml(style)})</h4>`
+        bodyContent += `<p class="citation">${escapeHtml(citationText)}</p>`
+      }
+      bodyContent += `</div>`
+    })
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)} - ${escapeHtml(sessionLabel)}</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #020617;
+      background: #fafafa;
+      margin: 32px;
+      line-height: 1.6;
+    }
+    h1 {
+      font-size: 26px;
+      margin-bottom: 4px;
+    }
+    h2 {
+      font-size: 20px;
+      margin-top: 32px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+    }
+    h3 {
+      font-size: 16px;
+      margin-top: 24px;
+      margin-bottom: 4px;
+    }
+    h4 {
+      font-size: 14px;
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+    p {
+      margin: 4px 0;
+      font-size: 13px;
+    }
+    .meta {
+      color: #475569;
+      font-size: 12px;
+    }
+    .paper {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+      page-break-inside: avoid;
+    }
+    .citation {
+      font-size: 12px;
+      font-style: italic;
+    }
+    ul {
+      padding-left: 18px;
+      font-size: 13px;
+    }
+    a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    @media print {
+      body {
+        margin: 20mm;
+        background: #ffffff;
+      }
+      a {
+        color: #000000;
+        text-decoration: none;
+      }
+    }
+  </style>
+</head>
+<body>
+${bodyContent}
+</body>
+</html>
+`
+
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.open()
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  setTimeout(() => {
+    win.print()
+  }, 300)
+}
+
 // ─── Bulk Export ──────────────────────────────────────────────────────────────
 function exportTxt(papers, citations) {
   let content = 'ORCHESTRIX — CITATION EXPORT\n'
@@ -232,6 +402,6 @@ function exportBib(papers, citations) {
 const CitationAgent = {
   generateAll, generateAPA, generateMLA,
   generateIEEE, generateChicago, generateBibtex,
-  exportTxt, exportBib, exportSessionReport
+  exportTxt, exportBib, exportSessionReport, exportSessionPdf
 }
 export default CitationAgent

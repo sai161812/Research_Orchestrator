@@ -5,7 +5,6 @@ import {
   deduplicateAndMerge
 } from '../utils/paperUtils'
 
-const isProd = import.meta.env.PROD
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -13,9 +12,7 @@ function sleep(ms) {
 
 async function fetchSemanticScholar(query, offset = 0, limit = 10) {
   const fields = 'paperId,title,authors,year,abstract,citationCount,url,externalIds'
-  const url = isProd
-    ? `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
-    : `/api/semantic-scholar/graph/v1/paper/search?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
+  const url = `/api/semantic-scholar?query=${encodeURIComponent(query)}&fields=${fields}&offset=${offset}&limit=${limit}`
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -41,7 +38,7 @@ async function fetchSemanticScholar(query, offset = 0, limit = 10) {
         const paper = createPaper()
         paper.id = p.paperId || crypto.randomUUID()
         paper.title = p.title || 'Untitled'
-        paper.normalizedTitle = normalizeText(paper.title, true)
+        paper.normalizedTitle = normalizeText(paper.title, false)
         paper.doi = p.externalIds?.DOI || ''
         paper.authors = (p.authors || []).map(a => ({ name: a.name, id: a.authorId }))
         paper.year = p.year || null
@@ -60,10 +57,41 @@ async function fetchSemanticScholar(query, offset = 0, limit = 10) {
   return []
 }
 
+async function fetchSemanticScholarMatch(query) {
+  const fields = 'paperId,title,authors,year,abstract,citationCount,url,externalIds'
+  const url = `/api/semantic-scholar?match=true&query=${encodeURIComponent(query)}&fields=${fields}`
+
+  try {
+    const res = await fetch(url)
+    if (!res.ok) {
+      if (res.status !== 404) console.warn(`SS Match failed: status=${res.status} query="${query}"`)
+      return null
+    }
+
+    const data = await res.json()
+    if (!data || !data.paperId) return null
+
+    const paper = createPaper()
+    paper.id = data.paperId
+    paper.title = data.title || 'Untitled'
+    paper.normalizedTitle = normalizeText(paper.title, false)
+    paper.doi = data.externalIds?.DOI || ''
+    paper.authors = (data.authors || []).map(a => ({ name: a.name, id: a.authorId }))
+    paper.year = data.year || null
+    paper.abstract = data.abstract || 'No abstract available.'
+    paper.url = data.url || (data.paperId ? `https://www.semanticscholar.org/paper/${data.paperId}` : '')
+    paper.citationCount = data.citationCount || 0
+    paper.source = 'semanticscholar'
+    paper.isExactMatch = true
+    return paper
+  } catch (e) {
+    console.warn(`SS Match error:`, e.message)
+    return null
+  }
+}
+
 async function fetchArxiv(query, start = 0, maxResults = 10) {
-  const url = isProd
-    ? `/api/arxiv?search_query=all:${encodeURIComponent(query)}&start=${start}&max_results=${maxResults}`
-    : `/api/arxiv/api/query?search_query=all:${encodeURIComponent(query)}&start=${start}&max_results=${maxResults}&sortBy=relevance&sortOrder=descending`
+  const url = `/api/arxiv?search_query=all:${encodeURIComponent(query)}&start=${start}&max_results=${maxResults}`
 
   try {
     const res = await fetch(url)
@@ -81,7 +109,7 @@ async function fetchArxiv(query, start = 0, maxResults = 10) {
       const rawId = entry.querySelector('id')?.textContent || ''
       paper.id = 'arxiv-' + rawId.split('/abs/').pop().replace(/\//g, '-')
       paper.title = entry.querySelector('title')?.textContent?.trim().replace(/\s+/g, ' ') || 'Untitled'
-      paper.normalizedTitle = normalizeText(paper.title, true)
+      paper.normalizedTitle = normalizeText(paper.title, false)
       paper.authors = Array.from(entry.querySelectorAll('author name')).map(n => ({
         name: n.textContent.trim(), id: null
       }))
@@ -103,28 +131,78 @@ async function fetchArxiv(query, start = 0, maxResults = 10) {
 async function run(query, page = 1) {
   const limit = 8
   const offset = (page - 1) * limit
-  console.log('DiscoveryAgent:', query)
-
-  let ssPapers = await fetchSemanticScholar(query, offset, limit)
-  await sleep(500)
   
-  const words = query.split(" ").filter(Boolean);
-  if (words.length >= 3) {
-      console.log('Trying exact title query for Semantic Scholar...')
-      const exactSsPapers = await fetchSemanticScholar(`"${query}"`, 0, 5)
-      ssPapers = [...ssPapers, ...exactSsPapers]
-      await sleep(400)
+  // Preserve the user's literal query for upstream APIs and normalize only for scoring.
+  const rawQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const normalizedQuery = normalizeText(rawQuery, false)
+  if (!rawQuery) return []
+  console.log('DiscoveryAgent running for:', rawQuery)
+
+  const words = normalizedQuery.split(" ").filter(Boolean);
+  const looksLikeTitle = words.length >= 3;
+
+  // Fast path for likely title queries on first page:
+  // hit exact-match endpoint first and skip slower arXiv round-trip when found.
+  if (looksLikeTitle && page === 1) {
+    const matchedPaper = await fetchSemanticScholarMatch(rawQuery)
+    if (matchedPaper) {
+      console.log('Fast exact-title path used. Returning exact matched paper immediately.')
+      return [{ ...matchedPaper, isExactMatch: true }]
+    }
+  }
+  
+  // 1. Parallel launch:
+  // For likely title queries, prioritize Semantic Scholar only for speed/precision.
+  const searchPromises = [fetchSemanticScholar(rawQuery, offset, limit)];
+
+  // Also try exact match if query looks like a title
+  if (looksLikeTitle) {
+      searchPromises.push(fetchSemanticScholarMatch(rawQuery));
+  } else {
+      searchPromises.push(fetchArxiv(rawQuery, offset, limit));
   }
 
-  const arxivPapers = await fetchArxiv(query, offset, limit)
+  const results = await Promise.all(searchPromises);
   
+  let ssPapers = results[0] || [];
+  let arxivPapers = [];
+  let matchedPaper = null;
+
+  if (looksLikeTitle) {
+    matchedPaper = results[1] || null;
+  } else {
+    arxivPapers = results[1] || [];
+  }
+
+  if (matchedPaper) {
+      console.log('EXACT TITLE MATCH FOUND via SS Match Endpoint:', matchedPaper.title)
+      ssPapers = [matchedPaper, ...ssPapers];
+  }
+
+  // 2. Fallback Quoted Search (Only if absolutely necessary)
+  // If no high-confidence match found yet, we try one more specific search
+  const allCurrent = [...ssPapers, ...arxivPapers];
+  const hasStrongMatch = allCurrent.some(p => {
+      const score = computeTitleMatchScore(normalizedQuery, p.normalizedTitle);
+      return score >= 0.95;
+  });
+
+  if (looksLikeTitle && !hasStrongMatch) {
+      console.log('No strong match found in parallel results, trying quoted fallback...');
+      const exactSsPapers = await fetchSemanticScholar(`"${rawQuery}"`, 0, 5)
+      ssPapers = [...ssPapers, ...exactSsPapers]
+      // Still no strong SS match? try arXiv as last fallback for title query.
+      if (arxivPapers.length === 0) {
+        arxivPapers = await fetchArxiv(rawQuery, offset, limit)
+      }
+  }
+
   console.log(`Merged source counts before dedupe -> SS: ${ssPapers.length}, arXiv: ${arxivPapers.length}`)
 
   let allPapers = [...ssPapers, ...arxivPapers]
   
-  // Step 5 Detection Flow
-  if (words.length >= 3) {
-      const normalizedQuery = normalizeText(query, true);
+  // Detection Flow for Exact Matches (Standardize markers)
+  if (looksLikeTitle) {
       let maxScore = -1;
       let topPaperIds = [];
       
@@ -138,10 +216,12 @@ async function run(query, page = 1) {
           }
       });
       
-      if (maxScore >= 0.85 && topPaperIds.length > 0) {
-          console.log(`EXACT MATCH FOUND (Score: ${maxScore})`);
+      if (maxScore >= 0.95 && topPaperIds.length > 0) {
           allPapers = allPapers.map(p => {
-              if (topPaperIds.includes(p.id)) p.isExactMatch = true;
+              if (topPaperIds.includes(p.id)) {
+                  if (!p.isExactMatch) console.log(`Marking EXACT MATCH (Score: ${maxScore}): ${p.title}`);
+                  p.isExactMatch = true;
+              }
               return p;
           });
       }

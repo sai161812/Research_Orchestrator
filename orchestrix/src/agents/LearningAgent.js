@@ -31,7 +31,7 @@ async function callGroq(prompt) {
     const raw = data.choices?.[0]?.message?.content?.trim()
     try {
       return JSON.parse(raw)
-    } catch (_) {
+    } catch {
       return { error: 'LLM returned invalid JSON structure.' }
     }
   } catch (e) {
