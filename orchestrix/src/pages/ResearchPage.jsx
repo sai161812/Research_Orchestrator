@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { runOrchestrator, continueEntityRun } from '../orchestrator/Orchestrator'
 import PaperCard from '../components/PaperCard'
 import TracePanel from '../components/TracePanel'
-import MentorPanel from '../components/MentorPanel'
+import WorkspacePanel from '../components/WorkspacePanel'
 import EntityConfirm from '../components/EntityConfirm'
 import FilterBar from '../components/FilterBar'
 import CitationAgent from '../agents/CitationAgent'
@@ -12,8 +12,6 @@ const SUGGESTIONS = [
   'AI in healthcare trends',
   'Recent advances in large language models',
   'Quantum computing algorithms',
-  'Elon Musk',
-  'OpenAI research',
   'Computer vision deep learning',
 ]
 
@@ -23,7 +21,7 @@ export default function ResearchPage() {
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState('idle')
   const [trace, setTrace] = useState([])
-  const [traceOpen, setTraceOpen] = useState(false)
+  const [traceOpen, setTraceOpen] = useState(true)
   const [papers, setPapers] = useState([])
   const [filteredPapers, setFilteredPapers] = useState([])
   const [isFilterActive, setIsFilterActive] = useState(false)
@@ -160,239 +158,257 @@ export default function ResearchPage() {
 
   const displayPapers = isFilterActive ? filteredPapers : papers
 
+  // Layout check
+  const hasTrace = trace.length > 0
+  const showRightPanel = selectedPapers.length > 0 || compareResult || mentorPaper
+
   return (
     <div style={{
-      minHeight: '100vh', background: '#04040a',
-      paddingRight: traceOpen ? 320 : 0,
-      transition: 'padding-right 0.35s cubic-bezier(0.4,0,0.2,1)'
+      display: 'flex',
+      height: '100vh',
+      overflow: 'hidden',
+      background: 'var(--bg-primary)'
     }}>
 
-      {/* ── HERO ── */}
-      <HeroSection
-        query={query}
-        setQuery={setQuery}
-        sessionName={sessionName}
-        setSessionName={setSessionName}
-        onSearch={handleSearch}
-        loading={loading}
-        stage={stage}
-        inputRef={inputRef}
-      />
-
-      {/* ── LOADING ── */}
-      {stage === 'loading' && (
-        <div style={{
-          maxWidth: 600, margin: '40px auto',
-          textAlign: 'center', padding: '0 24px'
-        }}>
-          <div style={{
-            background: '#0d0d1a', border: '1px solid #1e1e35',
-            borderRadius: 16, padding: '32px 24px'
-          }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%',
-              border: '3px solid #1e1e35', borderTopColor: '#6366f1',
-              animation: 'spin 0.8s linear infinite',
-              margin: '0 auto 16px'
-            }} />
-            <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: 8 }}>
-              Orchestrating your research pipeline...
-            </div>
-            <div style={{ color: '#475569', fontSize: 13 }}>
-              Fetching from Semantic Scholar + arXiv. This may take 10–20 seconds.
-            </div>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        </div>
-      )}
-
-      {/* ── ENTITY CONFIRM ── */}
-      {stage === 'confirm' && intent && (
-        <EntityConfirm
-          intent={intent}
-          onConfirm={handleEntityConfirm}
-          onCancel={() => setStage('idle')}
+      {/* ── TRACE PANEL (LEFT) ── */}
+      {hasTrace && (
+        <TracePanel
+          trace={trace}
+          isOpen={traceOpen}
+          // The TracePanel controls its own width internally now, but we render it here
         />
       )}
 
-      {/* ── RESULTS ── */}
-      {stage === 'results' && papers.length > 0 && (
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 80px' }}>
+      {/* ── CENTER WORKSPACE ── */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        position: 'relative'
+      }}>
+        {/* HERO */}
+        <HeroSection
+          query={query}
+          setQuery={setQuery}
+          sessionName={sessionName}
+          setSessionName={setSessionName}
+          onSearch={handleSearch}
+          loading={loading}
+          stage={stage}
+          inputRef={inputRef}
+        />
 
-          {/* Results header */}
+        {/* LOADING */}
+        {stage === 'loading' && (
           <div style={{
-            display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
-            marginBottom: 20, paddingBottom: 16,
-            borderBottom: '1px solid #1e1e35'
+            maxWidth: 600, margin: '40px auto',
+            textAlign: 'center', padding: '0 24px'
           }}>
-            <div>
-              <span style={{ fontSize: 13, color: '#475569' }}>
-                {displayPapers.length} papers
-                {filteredPapers.length > 0 ? ' (filtered)' : ' found'} for{' '}
-              </span>
-              <span style={{ fontSize: 13, color: '#a5b4fc', fontWeight: 600 }}>
-                "{query}"
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {selectedPapers.length > 0 && (
-                <div style={{
-                  fontSize: 12, color: '#10b981', fontWeight: 600,
-                  background: '#10b98110', border: '1px solid #10b98130',
-                  padding: '4px 12px', borderRadius: 20
-                }}>
-                  {selectedPapers.length} selected
-                </div>
-              )}
-              <button
-                onClick={handleCompare}
-                disabled={selectedPapers.length !== 2 || comparing}
-                style={{
-                  padding: '6px 16px', borderRadius: 8, fontSize: 12,
-                  fontWeight: 600, cursor: selectedPapers.length === 2 ? 'pointer' : 'not-allowed', 
-                  transition: 'all 0.2s',
-                  background: selectedPapers.length === 2 ? '#6366f115' : 'transparent', 
-                  border: `1px solid ${selectedPapers.length === 2 ? '#6366f150' : '#1e1e35'}`,
-                  color: selectedPapers.length === 2 ? '#a5b4fc' : '#475569'
-                }}>
-                {comparing ? 'Comparing...' : '⚖ Compare (Select 2)'}
-              </button>
-            </div>
-          </div>
-
-          {/* Comparison Result Panel */}
-          {compareResult && (
             <div style={{
-              background: '#0d0d1a', border: '1px solid #6366f140',
-              borderRadius: 12, padding: 20, marginBottom: 20,
-              boxShadow: '0 4px 24px rgba(99,102,241,0.1)'
+              background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+              borderRadius: 8, padding: '32px 24px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ margin: 0, fontSize: 15, color: '#f1f5f9', fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{color: '#6366f1'}}>⚖</span> Technical Comparison
-                </h3>
-                <button onClick={() => setCompareResult(null)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%',
+                border: '2px solid var(--border-color)', borderTopColor: 'var(--text-secondary)',
+                animation: 'spin 0.8s linear infinite',
+                margin: '0 auto 16px'
+              }} />
+              <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 8 }}>
+                Orchestrating research pipeline...
               </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
-                <div><strong style={{color: '#a5b4fc'}}>Summary Diff:</strong> {compareResult.summary_diff}</div>
-                <div><strong style={{color: '#06b6d4'}}>Citation Impact:</strong> {compareResult.citation_comparison}</div>
-                <div><strong style={{color: '#10b981'}}>Recency:</strong> {compareResult.recency_comparison}</div>
-                <div style={{ marginTop: 8, padding: 12, background: '#12121f', borderRadius: 8, borderLeft: '3px solid #6366f1', color: '#f1f5f9' }}>
-                  <strong>Key Takeaways:</strong> {compareResult.key_takeaways}
+              <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                Executing search and discovery agents. Please wait.
+              </div>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          </div>
+        )}
+
+        {/* ENTITY CONFIRM */}
+        {stage === 'confirm' && intent && (
+          <EntityConfirm
+            intent={intent}
+            onConfirm={handleEntityConfirm}
+            onCancel={() => setStage('idle')}
+          />
+        )}
+
+        {/* RESULTS */}
+        {stage === 'results' && papers.length > 0 && (
+          <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 32px 80px' }}>
+            {/* Results header */}
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+              marginBottom: 20, paddingBottom: 16,
+              borderBottom: '1px solid var(--border-color)'
+            }}>
+              <div className="mono-text" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {displayPapers.length} PAPERS
+                {isFilterActive ? ' (FILTERED)' : ' FOUND'} FOR{' '}
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                  "{query.toUpperCase()}"
+                </span>
+                {displayPapers.some(p => p.isExactMatch) && (
+                  <span style={{ color: '#38bd94', fontWeight: 700, marginLeft: 8 }}>
+                    — EXACT TITLE MATCH FOUND
+                  </span>
+                )}
+              </div>
+
+              <div className="mono-text" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {selectedPapers.length > 0 && (
+                  <div style={{
+                    fontSize: 10, color: 'var(--text-secondary)', fontWeight: 700,
+                    background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                    padding: '4px 10px', borderRadius: 4
+                  }}>
+                    {selectedPapers.length} SELECTED
+                  </div>
+                )}
+                <button
+                  onClick={handleCompare}
+                  disabled={selectedPapers.length !== 2 || comparing}
+                  style={{
+                    padding: '4px 12px', borderRadius: 4, fontSize: 10,
+                    fontWeight: 700, cursor: selectedPapers.length === 2 ? 'pointer' : 'not-allowed', 
+                    transition: 'all 0.2s',
+                    background: selectedPapers.length === 2 ? 'var(--text-secondary)' : 'var(--bg-primary)', 
+                    border: `1px solid var(--border-color)`,
+                    color: selectedPapers.length === 2 ? 'var(--bg-primary)' : 'var(--text-muted)'
+                  }}>
+                  {comparing ? 'COMPARING...' : 'COMPARE (2)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Comparison Result Panel - shown inline if requested */}
+            {compareResult && (
+              <div style={{
+                background: 'var(--bg-surface)', border: '1px solid var(--text-secondary)',
+                borderRadius: 8, padding: 20, marginBottom: 20,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 className="mono-text" style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em' }}>
+                    TECHNICAL COMPARISON
+                  </h3>
+                  <button onClick={() => setCompareResult(null)} style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: 4, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 10, padding: '2px 8px' }}>CLOSE</button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  <div><strong style={{color: 'var(--text-primary)'}}>Summary Diff:</strong> {compareResult.summary_diff}</div>
+                  <div><strong style={{color: 'var(--text-primary)'}}>Citation Impact:</strong> {compareResult.citation_comparison}</div>
+                  <div><strong style={{color: 'var(--text-primary)'}}>Recency:</strong> {compareResult.recency_comparison}</div>
+                  <div style={{ padding: 16, background: 'var(--bg-primary)', borderRadius: 4, borderLeft: '2px solid var(--text-secondary)', color: 'var(--text-primary)' }}>
+                    <strong>Takeaways:</strong> {compareResult.key_takeaways}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Filter bar */}
-          <FilterBar
-            papers={papers}
-            onFilter={({ papers: next, active }) => {
-              setFilteredPapers(next)
-              setIsFilterActive(Boolean(active))
-            }}
-          />
-
-          {/* Paper cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {displayPapers.map((paper, i) => (
-              <PaperCard
-                key={paper.id}
-                paper={paper}
-                index={i} 
-                citations={citations}
-                onSelect={handleSelect}
-                onMentorRequest={(p) => setMentorPaper(p)}
-                isSelected={selectedPapers.some(p => p.id === paper.id)}
-                sessionId={sessionId}
-              />
-            ))}
-          </div>
-
-          {/* Load more */}
-          {filteredPapers.length === 0 && (
-            <div style={{ textAlign: 'center', marginTop: 40 }}>
-              <button onClick={loadMore} style={{
-                padding: '12px 32px', borderRadius: 10, fontSize: 14,
-                fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                background: 'transparent', border: '1px solid #1e1e35',
-                color: '#64748b',
+            {/* Filter bar */}
+            <FilterBar
+              papers={papers}
+              onFilter={({ papers: next, active }) => {
+                setFilteredPapers(next)
+                setIsFilterActive(Boolean(active))
               }}
-                onMouseEnter={e => {
-                  e.target.style.borderColor = '#6366f160'
-                  e.target.style.color = '#a5b4fc'
-                }}
-                onMouseLeave={e => {
-                  e.target.style.borderColor = '#1e1e35'
-                  e.target.style.color = '#64748b'
-                }}>
-                Load more papers →
-              </button>
+            />
+
+            {/* Paper cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {displayPapers.map((paper, i) => (
+                <PaperCard
+                  key={paper.id}
+                  paper={paper}
+                  index={i}
+                  onSelect={handleSelect}
+                  isSelected={selectedPapers.some(p => p.id === paper.id)}
+                />
+              ))}
             </div>
-          )}
-        </div>
-      )}
 
-      {/* ── NO RESULTS ── */}
-      {stage === 'results' && papers.length === 0 && fallbackExhausted && (
-        <div style={{
-          maxWidth: 560, margin: '40px auto', textAlign: 'center',
-          padding: 32, background: '#0d0d1a',
-          border: '1px solid #1e1e35', borderRadius: 16
-        }}>
-          <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: 8 }}>
-            No papers were returned.
+            {/* Load more */}
+            {filteredPapers.length === 0 && (
+              <div style={{ textAlign: 'center', marginTop: 40 }}>
+                <button onClick={loadMore} className="mono-text" style={{
+                  padding: '8px 24px', borderRadius: 4, fontSize: 11,
+                  fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                  background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                  color: 'var(--text-muted)',
+                }}
+                  onMouseEnter={e => {
+                    e.target.style.borderColor = 'var(--text-secondary)'
+                    e.target.style.color = 'var(--text-primary)'
+                  }}
+                  onMouseLeave={e => {
+                    e.target.style.borderColor = 'var(--border-color)'
+                    e.target.style.color = 'var(--text-muted)'
+                  }}>
+                  LOAD MORE
+                </button>
+              </div>
+            )}
           </div>
-          <div style={{ color: '#64748b', fontSize: 13 }}>
-            Try a broader query or different keywords.
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* ── EMPTY STATE ── */}
-      {stage === 'idle' && (
-        <div style={{
-          textAlign: 'center', padding: '20px 24px 80px',
-          color: '#2a2a4a', fontSize: 13
-        }}>
-          Enter any research query above to begin
-        </div>
-      )}
-
-      {/* ── ERROR ── */}
-      {stage === 'error' && (
-        <div style={{
-          maxWidth: 500, margin: '40px auto', textAlign: 'center',
-          padding: 32, background: '#0d0d1a',
-          border: '1px solid #ef444430', borderRadius: 16
-        }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
-          <div style={{ color: '#ef4444', fontWeight: 600, marginBottom: 8 }}>
-            Something went wrong
+        {/* NO RESULTS */}
+        {stage === 'results' && papers.length === 0 && fallbackExhausted && (
+          <div style={{
+            maxWidth: 560, margin: '40px auto', textAlign: 'center',
+            padding: 32, background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)', borderRadius: 8
+          }}>
+            <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 8 }}>
+              No papers found
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+              Try applying broader keywords or simpler terms.
+            </div>
           </div>
-          <div style={{ color: '#475569', fontSize: 13 }}>
-            Check your Groq API key in .env and try again.
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* ── MENTOR PANEL ── */}
-      {mentorPaper && (
-        <MentorPanel
-          paper={mentorPaper}
-          onClose={() => setMentorPaper(null)}
+        {/* EMPTY STATE */}
+        {stage === 'idle' && (
+          <div style={{
+            textAlign: 'center', padding: '20px 24px 80px',
+            color: 'var(--text-muted)', fontSize: 13
+          }}>
+            SYSTEM IDLE — AWAITING QUERY PIPELINE
+          </div>
+        )}
+
+        {/* ERROR */}
+        {stage === 'error' && (
+          <div style={{
+            maxWidth: 500, margin: '40px auto', textAlign: 'center',
+            padding: 32, background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)', borderRadius: 8
+          }}>
+            <div className="mono-text" style={{ fontSize: 12, marginBottom: 12, color: 'var(--text-secondary)', fontWeight: 700 }}>
+              [ ERR_PIPELINE_FAILURE ]
+            </div>
+            <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 8 }}>
+              Pipeline Execution Terminated
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+              Check API configurations or network stability.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── WORKSPACE PANEL (RIGHT) ── */}
+      {showRightPanel && (
+        <WorkspacePanel
+          selectedPapers={selectedPapers}
+          compareResult={compareResult}
+          mentorPaper={mentorPaper}
+          onCloseMentor={() => setMentorPaper(null)}
+          onTogglePaper={handleSelect}
+          citations={citations}
         />
       )}
-
-      {/* ── TRACE PANEL ── */}
-      <TracePanel
-        trace={trace}
-        isOpen={traceOpen}
-        onToggle={() => setTraceOpen(o => !o)}
-      />
     </div>
   )
 }
@@ -404,79 +420,58 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
 
   return (
     <div style={{
-      padding: collapsed ? '40px 24px 32px' : '100px 24px 60px',
+      padding: collapsed ? '40px 32px 32px' : '12vh 32px 60px',
       transition: 'padding 0.5s cubic-bezier(0.4,0,0.2,1)',
-      position: 'relative', overflow: 'hidden'
+      position: 'relative'
     }}>
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        background: 'radial-gradient(ellipse 70% 50% at 50% 0%, #6366f108 0%, transparent 70%)',
-        pointerEvents: 'none'
-      }} />
 
       <div style={{
-        position: 'relative', zIndex: 1,
         maxWidth: 720, margin: '0 auto', textAlign: 'center'
       }}>
         {!collapsed && (
           <>
-            <div style={{
+            <div className="mono-text" style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
-              background: '#6366f110', border: '1px solid #6366f125',
-              borderRadius: 20, padding: '5px 14px', marginBottom: 28
+              background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+              borderRadius: 4, padding: '4px 10px', marginBottom: 28
             }}>
               <div style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: '#6366f1', boxShadow: '0 0 8px #6366f1'
+                width: 6, height: 6, background: 'var(--text-secondary)'
               }} />
-              <span style={{ fontSize: 11, color: '#a5b4fc', fontWeight: 600, letterSpacing: '0.05em' }}>
-                MULTI-AGENT RESEARCH PLATFORM
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em' }}>
+                ORCHESTRIX V1.0
               </span>
             </div>
 
             <h1 style={{
-              fontSize: 'clamp(28px, 5vw, 56px)', fontWeight: 700,
+              fontSize: 'clamp(28px, 5vw, 48px)', fontWeight: 700,
               letterSpacing: '-0.03em', lineHeight: 1.1,
-              color: '#f1f5f9', marginBottom: 16
+              color: 'var(--text-primary)', marginBottom: 16
             }}>
-              Research Intelligence,{' '}
-              <span style={{
-                background: 'linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-              }}>
-                Orchestrated.
-              </span>
+              Research Intelligence.
             </h1>
 
             <p style={{
-              fontSize: 16, color: '#475569', lineHeight: 1.7,
+              fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.6,
               marginBottom: 40, maxWidth: 500, margin: '0 auto 40px'
             }}>
-              Ask anything. Our agents discover papers, analyze trends,
-              generate citations and synthesize insights — automatically.
+              Execute agentic discovery pipelines to retrieve, analyze, and synthesize literature.
             </p>
           </>
         )}
 
         {/* Search bar */}
         <div style={{
-          background: '#0d0d1a',
-          border: `1.5px solid ${focused ? '#6366f180' : '#1e1e35'}`,
-          borderRadius: 14,
-          boxShadow: focused
-            ? '0 0 0 4px #6366f112, 0 24px 64px rgba(0,0,0,0.5)'
-            : '0 8px 32px rgba(0,0,0,0.4)',
-          transition: 'all 0.3s',
-          overflow: 'hidden'
+          background: 'var(--bg-surface)',
+          border: `1px solid ${focused ? 'var(--text-secondary)' : 'var(--border-color)'}`,
+          borderRadius: 8,
+          transition: 'all 0.3s'
         }}>
           <div style={{
             display: 'flex', alignItems: 'center',
-            gap: 12, padding: '14px 20px'
+            gap: 12, padding: '12px 16px'
           }}>
-            {loading
-              ? <LoadingSpinner />
-              : <span style={{ fontSize: 18, opacity: 0.5 }}>🔍</span>
-            }
+            {loading ? <LoadingSpinner /> : <span className="mono-text" style={{fontSize: 10, color: 'var(--text-muted)'}}>[Q]</span>}
             <input
               ref={inputRef}
               value={query}
@@ -484,52 +479,51 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
               onKeyDown={e => e.key === 'Enter' && onSearch()}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              placeholder='Ask anything — "AI trends", "Elon Musk", "recent CV papers"...'
+              placeholder="Initialize search pipeline (e.g. LLM routing, synthetic data generation)"
               disabled={loading}
               style={{
                 flex: 1, background: 'transparent', border: 'none',
-                outline: 'none', fontSize: 15, color: '#f1f5f9',
-                caretColor: '#6366f1',
+                outline: 'none', fontSize: 14, color: 'var(--text-primary)',
+                fontFamily: 'var(--font-sans)'
               }}
             />
             <button
               onClick={() => onSearch()}
               disabled={!query.trim() || loading}
+              className="mono-text"
               style={{
-                padding: '9px 22px', borderRadius: 9, fontSize: 13,
+                padding: '6px 14px', borderRadius: 4, fontSize: 11,
                 fontWeight: 700,
                 cursor: !query.trim() || loading ? 'not-allowed' : 'pointer',
-                background: !query.trim() || loading
-                  ? '#1e1e35'
-                  : 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                border: 'none',
-                color: !query.trim() || loading ? '#475569' : 'white',
-                transition: 'all 0.2s', whiteSpace: 'nowrap',
-                boxShadow: !query.trim() || loading
-                  ? 'none' : '0 4px 16px #6366f140'
+                background: !query.trim() || loading ? 'var(--bg-primary)' : 'var(--text-primary)',
+                border: '1px solid',
+                borderColor: !query.trim() || loading ? 'var(--border-color)' : 'var(--text-primary)',
+                color: !query.trim() || loading ? 'var(--text-muted)' : 'var(--bg-primary)',
+                transition: 'all var(--trans-fast)', whiteSpace: 'nowrap'
               }}>
-              {loading ? 'Working...' : 'Run →'}
+              {loading ? 'EXECUTING' : 'EXECUTE'}
             </button>
           </div>
 
           <div style={{
-            borderTop: '1px solid #1e1e35',
-            padding: '9px 20px',
+            borderTop: '1px solid var(--border-color)',
+            padding: '8px 16px',
             display: 'flex', alignItems: 'center', gap: 10
           }}>
-            <span style={{
-              fontSize: 11, color: '#2a2a4a',
+            <span className="mono-text" style={{
+              fontSize: 10, color: 'var(--text-muted)',
               fontWeight: 600, letterSpacing: '0.05em'
             }}>
-              SESSION
+              NAMESPACE
             </span>
             <input
               value={sessionName}
               onChange={e => setSessionName(e.target.value)}
-              placeholder="Name this session (optional)"
+              placeholder="default_session"
               style={{
                 flex: 1, background: 'transparent', border: 'none',
-                outline: 'none', fontSize: 12, color: '#64748b'
+                outline: 'none', fontSize: 12, color: 'var(--text-secondary)',
+                fontFamily: 'var(--font-mono)'
               }}
             />
           </div>
@@ -538,26 +532,25 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
         {/* Suggestions */}
         {!collapsed && (
           <div style={{
-            display: 'flex', gap: 8, marginTop: 20,
+            display: 'flex', gap: 8, marginTop: 24,
             flexWrap: 'wrap', justifyContent: 'center'
           }}>
             {SUGGESTIONS.map(s => (
               <button key={s}
                 onClick={() => { setQuery(s); setTimeout(() => onSearch(s), 50) }}
                 style={{
-                  padding: '5px 14px', borderRadius: 20, fontSize: 12,
-                  background: 'transparent', border: '1px solid #1e1e35',
-                  color: '#475569', cursor: 'pointer', transition: 'all 0.2s',
+                  padding: '4px 12px', borderRadius: 4, fontSize: 11,
+                  background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                  color: 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s',
+                  fontFamily: 'var(--font-sans)'
                 }}
                 onMouseEnter={e => {
-                  e.target.style.borderColor = '#6366f150'
-                  e.target.style.color = '#a5b4fc'
-                  e.target.style.background = '#6366f108'
+                  e.target.style.borderColor = 'var(--text-secondary)'
+                  e.target.style.color = 'var(--text-primary)'
                 }}
                 onMouseLeave={e => {
-                  e.target.style.borderColor = '#1e1e35'
-                  e.target.style.color = '#475569'
-                  e.target.style.background = 'transparent'
+                  e.target.style.borderColor = 'var(--border-color)'
+                  e.target.style.color = 'var(--text-muted)'
                 }}>
                 {s}
               </button>
@@ -572,9 +565,9 @@ function HeroSection({ query, setQuery, sessionName, setSessionName, onSearch, l
 function LoadingSpinner() {
   return (
     <div style={{
-      width: 18, height: 18, borderRadius: '50%',
-      border: '2px solid #1e1e35',
-      borderTopColor: '#6366f1',
+      width: 14, height: 14, borderRadius: '50%',
+      border: '2px solid var(--border-color)',
+      borderTopColor: 'var(--text-secondary)',
       animation: 'spin 0.8s linear infinite',
       flexShrink: 0
     }}>
