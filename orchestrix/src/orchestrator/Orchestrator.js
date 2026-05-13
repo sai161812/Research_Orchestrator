@@ -111,7 +111,9 @@ Return strict JSON:
     const parsed = JSON.parse(clean);
     const subTopics = Array.isArray(parsed.subTopics) ? parsed.subTopics.map(String).slice(0, 5) : [];
     if (subTopics.length > 0) return { entityType: parsed.entityType || 'concept', subTopics, reasoning: parsed.reasoning };
-  } catch (e) {}
+  } catch (e) {
+    console.warn("Fallback entity parsing failed", e.message);
+  }
   
   const words = (query.toLowerCase().match(/\b[a-z]{4,}\b/g) || []).filter(w => !['research', 'paper', 'papers', 'latest', 'recent', 'about'].includes(w));
   const seed = words.slice(0, 2).join(' ') || query.trim();

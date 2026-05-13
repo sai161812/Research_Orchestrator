@@ -7,7 +7,7 @@ const SOURCE_CONFIG = {
   arxiv: { label: 'arXiv', color: '#06b6d4', short: 'arXiv' },
 }
 
-export default function PaperCard({ paper, index, citations, onSelect, isSelected, sessionId }) {
+export default function PaperCard({ paper, index, citations, onSelect, onMentorRequest, isSelected, sessionId }) {
   const [expanded, setExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState('abstract')
   const [summary, setSummary] = useState(null)
@@ -120,6 +120,19 @@ export default function PaperCard({ paper, index, citations, onSelect, isSelecte
             }}>
               ★ {paper.relevanceScore?.toFixed(2) || '—'}
             </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onMentorRequest?.(paper)
+              }}
+              style={{
+                padding: '4px 12px', borderRadius: 6, fontSize: 11,
+                fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s',
+                background: '#f59e0b15', border: '1px solid #f59e0b40',
+                color: '#fbbf24',
+              }}>
+              🎓 Mentor
+            </button>
             <button
               onClick={() => onSelect?.(paper)}
               style={{

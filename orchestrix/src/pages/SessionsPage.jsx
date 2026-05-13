@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { getSessions, deleteSession, updateSession } from '../store/sessionStore'
+import { useNavigate } from 'react-router-dom'
+import { getSessions, deleteSession, updateSession, setActiveSessionId } from '../store/sessionStore'
 
 export default function SessionsPage() {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState(getSessions())
   const [editingNote, setEditingNote] = useState(null)
   const [noteText, setNoteText] = useState('')
@@ -12,6 +14,11 @@ export default function SessionsPage() {
   const handleDelete = (id) => {
     deleteSession(id)
     refresh()
+  }
+
+  const handleLoad = (id) => {
+    setActiveSessionId(id)
+    navigate('/')
   }
 
   const handleSaveNote = (id) => {
@@ -146,6 +153,15 @@ export default function SessionsPage() {
 
                     {/* Actions */}
                     <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => handleLoad(session.id)}
+                        style={{
+                          padding: '6px 12px', borderRadius: 8, fontSize: 12,
+                          background: '#10b98120', border: '1px solid #10b98140',
+                          color: '#34d399', cursor: 'pointer', fontWeight: 600
+                        }}>
+                        Load
+                      </button>
                       <button
                         onClick={() => toggleCompare(session.id)}
                         style={{

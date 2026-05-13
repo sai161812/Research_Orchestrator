@@ -1,11 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { runOrchestrator, continueEntityRun } from '../orchestrator/Orchestrator'
 import PaperCard from '../components/PaperCard'
 import TracePanel from '../components/TracePanel'
+import MentorPanel from '../components/MentorPanel'
 import EntityConfirm from '../components/EntityConfirm'
 import FilterBar from '../components/FilterBar'
 import CitationAgent from '../agents/CitationAgent'
-import { getSessionById } from '../store/sessionStore'
+import { getSessionById, getActiveSessionId, setActiveSessionId } from '../store/sessionStore'
 
 const SUGGESTIONS = [
   'AI in healthcare trends',
@@ -35,7 +36,26 @@ export default function ResearchPage() {
   const [fallbackExhausted, setFallbackExhausted] = useState(false)
   const [comparing, setComparing] = useState(false)
   const [compareResult, setCompareResult] = useState(null)
+  const [mentorPaper, setMentorPaper] = useState(null)
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    const activeId = getActiveSessionId()
+    if (activeId) {
+      const db = getSessionById(activeId)
+      if (db) {
+        setQuery(db.query || '')
+        setSessionName(db.name || '')
+        setPapers(db.papers || [])
+        setCitations(db.citations || {})
+        setIntent(db.intent || null)
+        setSessionId(db.id)
+        setTrace(db.trace || [])
+        if (db.papers && db.papers.length > 0) setStage('results')
+        else if (db.intent && db.intent.type === 'entity') setStage('confirm')
+      }
+    }
+  }, [])
 
   const handleSearch = async (q = query) => {
     if (!q.trim() || loading) return
@@ -74,6 +94,7 @@ export default function ResearchPage() {
       setPapers(result.papers)
       setCitations(result.citations)
       setSessionId(result.sessionId)
+      setActiveSessionId(result.sessionId)
       setIntent(result.intent)
       setFallbackExhausted(false)
       setStage('results')
@@ -97,6 +118,7 @@ export default function ResearchPage() {
     if (result.status === 'done') {
       setPapers(result.papers)
       setCitations(result.citations)
+      setActiveSessionId(pendingSessionId)
       setFallbackExhausted(Boolean(result.fallbackExhausted))
       setStage('results')
     } else {
@@ -283,6 +305,7 @@ export default function ResearchPage() {
                 index={i} 
                 citations={citations}
                 onSelect={handleSelect}
+                onMentorRequest={(p) => setMentorPaper(p)}
                 isSelected={selectedPapers.some(p => p.id === paper.id)}
                 sessionId={sessionId}
               />
@@ -354,6 +377,14 @@ export default function ResearchPage() {
             Check your Groq API key in .env and try again.
           </div>
         </div>
+      )}
+
+      {/* ── MENTOR PANEL ── */}
+      {mentorPaper && (
+        <MentorPanel
+          paper={mentorPaper}
+          onClose={() => setMentorPaper(null)}
+        />
       )}
 
       {/* ── TRACE PANEL ── */}
