@@ -19,16 +19,19 @@ export default async function handler(req, res) {
   try {
     // Build the URL by hand so quotes in the query are preserved as-is.
     // encodeURIComponent converts `"` → `%22` exactly once.
-    const f = fields || 'title,authors,year,abstract,citationCount,url'
+    const f = fields || 'title,authors,year,abstract,citationCount,url,externalIds'
     const o = offset || '0'
     const l = limit || '10'
+    const isMatch = req.query.match === 'true'
 
-    const url =
-      `https://api.semanticscholar.org/graph/v1/paper/search` +
-      `?query=${encodeURIComponent(query)}` +
+    const baseUrl = isMatch 
+      ? `https://api.semanticscholar.org/graph/v1/paper/search/match`
+      : `https://api.semanticscholar.org/graph/v1/paper/search`
+
+    const url = 
+      `${baseUrl}?query=${encodeURIComponent(query)}` +
       `&fields=${encodeURIComponent(f)}` +
-      `&offset=${o}` +
-      `&limit=${l}`
+      `${!isMatch ? `&offset=${o}&limit=${l}` : ''}`
 
     const response = await fetch(url, {
       headers: {
