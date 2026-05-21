@@ -9,23 +9,37 @@ export default defineConfig({
       '/api/semantic-scholar': {
         target: 'https://api.semanticscholar.org',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api\/semantic-scholar/, ''),
         secure: true,
-        // Preserve encoded characters like %22 (quotes) in query strings
+        // Route to the correct SS API endpoint and preserve encoded characters
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
-            // Vite's proxy sometimes decodes %22 back to " which SS rejects.
-            // Force the raw URL through unchanged.
-            const raw = req.url?.replace(/^\/api\/semantic-scholar/, '')
-            if (raw) proxyReq.path = raw
+            // Strip the proxy prefix, keeping the query string intact
+            let qs = req.url.replace(/^\/api\/semantic-scholar/, '')
+
+            // Detect match vs search endpoint from the ?match=true param
+            const isMatch = /[?&]match=true/.test(qs)
+            const basePath = isMatch
+              ? '/graph/v1/paper/search/match'
+              : '/graph/v1/paper/search'
+
+            // Remove the match param (SS API doesn't expect it)
+            qs = qs.replace(/([?&])match=true&?/, '$1').replace(/[?&]$/, '')
+
+            proxyReq.path = basePath + qs
           })
         }
       },
       '/api/arxiv': {
         target: 'https://export.arxiv.org',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api\/arxiv/, ''),
-        secure: true
+        secure: true,
+        // Route to the correct arXiv API query endpoint
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const qs = req.url.replace(/^\/api\/arxiv/, '')
+            proxyReq.path = '/api/query' + qs
+          })
+        }
       }
     }
   }
