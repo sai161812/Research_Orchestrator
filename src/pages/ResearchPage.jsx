@@ -169,7 +169,6 @@ export default function ResearchPage() {
       display: 'flex', flexDirection: 'column'
     }}>
 
-      {/* ── HERO ── */}
       <HeroSection
         query={query}
         setQuery={setQuery}
@@ -181,7 +180,6 @@ export default function ResearchPage() {
         inputRef={inputRef}
       />
 
-      {/* ── LOADING ── */}
       {stage === 'loading' && (
         <div style={{
           maxWidth: 600, margin: '40px auto',
