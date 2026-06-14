@@ -1,24 +1,20 @@
 const SESSIONS_KEY = 'orchestrix_sessions'
 
-// Get all sessions
 export const getSessions = () => {
   const raw = localStorage.getItem(SESSIONS_KEY)
   return raw ? JSON.parse(raw) : []
 }
 
-// Get one session by id
 export const getSessionById = (id) => {
   return getSessions().find(s => s.id === id) || null
 }
 
-// Save a new session
 export const saveSession = (session) => {
   const sessions = getSessions()
-  sessions.unshift(session)           // newest first
+  sessions.unshift(session)        
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
 }
 
-// Update existing session (merge changes)
 export const updateSession = (id, changes) => {
   const sessions = getSessions().map(s =>
     s.id === id ? { ...s, ...changes } : s
