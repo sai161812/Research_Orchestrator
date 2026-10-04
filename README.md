@@ -129,7 +129,7 @@ Orchestrix follows a **multi-agent orchestration** pattern where a central Orche
 
 ### Prerequisites
 
-- **Node.js** ≥ 18
+- **Node.js** 20.19+ on the 20.x line, or 22.12+ (required by the locked Vite 8 and React plugin dependencies)
 - **npm** ≥ 9
 - A free **Groq API key** — [get one here](https://console.groq.com/)
 
@@ -141,7 +141,7 @@ git clone https://github.com/sai161812/Research_Orchestrator.git
 cd Research_Orchestrator
 
 # Install dependencies
-npm install
+npm ci
 
 # Configure environment
 cp .env.example .env
@@ -153,6 +153,8 @@ Edit `.env` and add your Groq API key:
 VITE_GROQ_API_KEY=your_groq_api_key_here
 ```
 
+On PowerShell, create the environment file with `Copy-Item .env.example .env`.
+
 ### Development
 
 ```bash
@@ -161,12 +163,23 @@ npm run dev
 
 The app will be available at `http://localhost:5173`. The Vite dev server automatically proxies requests to the Semantic Scholar and arXiv APIs, so no additional backend setup is needed.
 
+### Verify the checkout
+
+```bash
+npm run lint
+npm run build
+```
+
+These check lint rules and bundle generation. They do not establish paper-retrieval accuracy or end-to-end research quality; `package.json` currently defines no automated test script.
+
 ### Production Build
 
 ```bash
 npm run build
 npm run preview
 ```
+
+`npm run preview` serves the built frontend. The paper API proxies are configured for the Vite development server and Vercel functions; preview does not start those functions, so use `npm run dev` for local paper-search testing.
 
 ---
 
@@ -241,7 +254,9 @@ orchestrix/
 
 ## ☁️ Deployment
 
-Orchestrix is designed for one-click deployment to **Vercel**:
+The current build is a prototype. **`VITE_GROQ_API_KEY` is embedded in the client bundle and sent directly from the browser to Groq.** A hosting environment variable does not make a `VITE_` key private. Before publishing a shared deployment, move Groq calls behind a server endpoint that holds the credential and enforces authentication and usage limits; that endpoint is not implemented here.
+
+For a controlled prototype deployment on **Vercel**:
 
 1. Push the repository to GitHub
 2. Import it in [Vercel Dashboard](https://vercel.com/new)
@@ -254,7 +269,7 @@ The `vercel.json` rewrites ensure that `/api/*` routes are handled by the server
 
 ## 📄 License
 
-This project is open source under the [MIT License](LICENSE).
+No `LICENSE` file is currently checked in. Public source availability does not establish an MIT license; reuse terms need an explicit license file.
 
 ---
 
