@@ -76,42 +76,35 @@ export function mergePaperData(current, candidate) {
 export function deduplicateAndMerge(papers) {
   const byDoi = new Map()
   const byTitle = new Map()
-  const deduped = []
+  const groups = []
 
   for (const paper of papers) {
     const doiKey = normalizeDoi(paper.doi)
     const titleKey = normalizeText(paper.title, false)
+    const doiIndex = doiKey ? byDoi.get(doiKey) : undefined
+    const titleIndex = titleKey ? byTitle.get(titleKey) : undefined
+    let index = doiIndex ?? titleIndex
 
-    let existing = null
-    if (doiKey && byDoi.has(doiKey)) existing = byDoi.get(doiKey)
-    else if (titleKey && byTitle.has(titleKey)) existing = byTitle.get(titleKey)
-
-    if (!existing) {
-      deduped.push(paper)
-      if (doiKey) byDoi.set(doiKey, paper)
-      if (titleKey) byTitle.set(titleKey, paper)
-      continue
+    if (index === undefined) {
+      index = groups.length
+      groups.push(paper)
+    } else {
+      groups[index] = mergePaperData(groups[index], paper)
+      // A bridging record can identify two previously separate groups.
+      if (doiIndex !== undefined && titleIndex !== undefined && doiIndex !== titleIndex) {
+        groups[index] = mergePaperData(groups[index], groups[titleIndex])
+        groups[titleIndex] = null
+        for (const aliases of [byDoi, byTitle]) {
+          for (const [key, value] of aliases) {
+            if (value === titleIndex) aliases.set(key, index)
+          }
+        }
+      }
     }
-
-    const better = mergePaperData(existing, paper)
-    
-    const idx = deduped.findIndex(p => p.id === existing.id || p === existing)
-    if (idx >= 0) deduped[idx] = better
-    
-    if (existing.doi) {
-       const existingDoiKey = normalizeDoi(existing.doi)
-       if (existingDoiKey) byDoi.set(existingDoiKey, better)
-    }
-    if (existing.title) {
-       const existingTitleKey = normalizeText(existing.title, false)
-       if (existingTitleKey) byTitle.set(existingTitleKey, better)
-    }
-    
-    if (doiKey) byDoi.set(doiKey, better)
-    if (titleKey) byTitle.set(titleKey, better)
+    if (doiKey) byDoi.set(doiKey, index)
+    if (titleKey) byTitle.set(titleKey, index)
   }
-
-  return deduped
+  return groups.filter(Boolean)
 }
 
 export function hybridRank(paper, query) {
