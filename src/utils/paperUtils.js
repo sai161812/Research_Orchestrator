@@ -44,7 +44,8 @@ export function computeTitleMatchScore(normalizedQuery, normalizedTitle) {
 }
 
 export function normalizeDoi(doi = '') {
-  return String(doi)
+  return String(doi ?? '')
+    .trim()
     .toLowerCase()
     .replace(/^https?:\/\/(dx\.)?doi\.org\//, '')
     .trim()
@@ -161,3 +162,4 @@ export function applySmartFilters(papers, filters) {
   
   return filtered;
 }
+
