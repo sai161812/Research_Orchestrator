@@ -55,8 +55,9 @@ export function mergePaperData(current, candidate) {
   const currentCitations = current?.citationCount || 0
   const candidateCitations = candidate?.citationCount || 0
   
-  const better = candidateCitations > currentCitations ? { ...candidate } : { ...current }
-  const other = better.id === current.id ? candidate : current
+  const useCandidate = candidateCitations > currentCitations
+  const better = useCandidate ? { ...candidate } : { ...current }
+  const other = useCandidate ? current : candidate
   
   if (!better.abstract || better.abstract === 'No abstract available.') {
      better.abstract = other.abstract || 'No abstract available.'
