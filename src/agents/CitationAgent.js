@@ -201,6 +201,17 @@ function exportSessionPdf(session, style = 'APA') {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+  const safeLink = (value) => {
+    try {
+      const url = new URL(value)
+      return ['https:', 'http:'].includes(url.protocol) ? escapeHtml(url.href) : ''
+    } catch {
+      return ''
+    }
+  }
 
   let bodyContent = ''
 
@@ -245,8 +256,9 @@ function exportSessionPdf(session, style = 'APA') {
       bodyContent += `<h3>${index + 1}. ${escapeHtml(paper.title || 'Untitled')}</h3>`
       bodyContent += `<p class="meta"><strong>Authors:</strong> ${escapeHtml(paper.authors?.map(a => a.name).join(', ') || 'Unknown')}</p>`
       bodyContent += `<p class="meta"><strong>Year:</strong> ${escapeHtml(paper.year || 'n.d.')} &nbsp;|&nbsp; <strong>Citations:</strong> ${escapeHtml(paper.citationCount || 0)} &nbsp;|&nbsp; <strong>Source:</strong> ${escapeHtml(paper.source || '')}</p>`
-      if (paper.url) {
-        bodyContent += `<p class="meta"><strong>Link:</strong> <a href="${escapeHtml(paper.url)}">${escapeHtml(paper.url)}</a></p>`
+      const link = safeLink(paper.url)
+      if (link) {
+        bodyContent += `<p class="meta"><strong>Link:</strong> <a href="${link}">${escapeHtml(paper.url)}</a></p>`
       }
       if (paper.abstract) {
         bodyContent += `<h4>Abstract</h4>`
