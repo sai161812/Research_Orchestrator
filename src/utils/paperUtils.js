@@ -108,10 +108,12 @@ export function deduplicateAndMerge(papers) {
 }
 
 export function hybridRank(paper, query) {
+  const rawCitations = Number(paper.citationCount)
+  const citations = Number.isFinite(rawCitations) ? Math.max(0, rawCitations) : 0
   // If explicitly marked as exact match during discovery, it's virtually guaranteed top
   if (paper.isExactMatch) {
     // Add small citation bias within 1000 range to prioritize original paper among duplicates
-    const citationTieBreaker = Math.min((paper.citationCount || 0) / 1000000, 0.01);
+    const citationTieBreaker = Math.min(citations / 1000000, 0.01);
     return 1000.0 + citationTieBreaker;
   }
   
@@ -123,10 +125,11 @@ export function hybridRank(paper, query) {
   const abstractLower = (paper.abstract || "").toLowerCase();
   const kwMatches = qWords.filter(w => abstractLower.includes(w)).length;
   const keywordRelevance = qWords.length > 0 ? Math.min(kwMatches / qWords.length, 1.0) : 0;
-  const citationsLog = Math.min(Math.log10((paper.citationCount || 0) + 1) / Math.log10(10000), 1.0);
+  const citationsLog = Math.min(Math.log10(citations + 1) / Math.log10(10000), 1.0);
   
   const currentYear = new Date().getFullYear();
-  const age = currentYear - (paper.year || currentYear);
+  const year = Number(paper.year);
+  const age = Number.isFinite(year) && year > 0 ? Math.max(0, currentYear - year) : 15;
   const recencyScore = Math.max(0, 1 - age / 15); // Slightly softer recency bias
   
   const sourceQuality = paper.source === 'semanticscholar' ? 1.0 : 0.95; 
